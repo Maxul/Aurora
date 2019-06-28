@@ -1,0 +1,6 @@
+History:
+19.6.17 clean up the text.
+19.6.18 spelling and grammar check.
+
+6.20 PC speaker
+6.27 Minor fixes, intro

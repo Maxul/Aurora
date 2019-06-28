@@ -1,0 +1,79 @@
+% ------------------------------------------
+%  IEEE ARTICLE TEMPLATE
+% ------------------------------------------
+% Author(s):
+% Institution(s):
+% ------------------------------------------
+\documentclass[journal,twocolumn,letterpaper,10pt]{ieee-sty/IEEEtran}
+\usepackage[acronym]{glossaries}
+
+\usepackage{epsfig}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{blindtext}
+\usepackage{xcolor}
+\usepackage[ampersand]{easylist}
+\usepackage[]{algorithm2e,algorithmicx}
+\usepackage[bottom]{footmisc}
+\usepackage{graphicx}
+
+\usepackage{hyperref}
+
+\renewcommand{\sectionautorefname}{\S}
+\renewcommand{\subsectionautorefname}{\S}
+\renewcommand{\subsubsectionautorefname}{\S}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+\usepackage{enumitem}
+\usepackage{flushend}
+
+% Generates the acronyms list
+\makeglossaries
+
+% Acronyms list
+\input{acronyms/acronyms.tex}
+
+% ------------------------------------------
+%  MAIN DOCUMENT
+% ------------------------------------------
+\begin{document}
+
+% Variables file
+\input{variables.tex}
+
+% Article title
+\title{Aurora: Establishing Trusted I/O Paths on SGX-Based Client Systems}
+
+% Author(s) Name
+\author{Hongliang~Liang,~\IEEEmembership{Member,~IEEE,}
+	Mingyu Li,%~\IEEEmembership{Fellow,~OSA,}
+	~Lin Jiang,~Zhuosi Xie,~Tianqi Yang,~Yixiu Chen\\
+	TSIS Lab, BUPT
+  %, Tianqi Yang, Mingyue Li, Yudong Wang % <-this % stops a space
+	\thanks{H. Liang, M. Li, L. Jiang, Z. Xie, T. Yang, Y. Chen 
+  %, T. Yang, M. Li, and Y. Wang 
+  are with Beijing University of Posts and Telecommunications, Beijing 100876, China. e-mail: (\{hliang,maxul,jianglin,xiezhuosi,yangtianqi,chenyixiu\}@bupt.edu.cn)
+  %; yangtianqi@bupt.edu.cn; li\_mingyue@bupt.edu.cn; wyd2013@bupt.edu.cn
+  }% <-this % stops a space
+	\thanks{This work was supported by the National Natural Science Foundation of China (NSFC) under Grant No. U1713212 and 91418206.}
+}
+
+\maketitle
+
+% Abstract
+\input{abstract/abstract.tex}
+
+% Keywords
+\input{keywords/keywords.tex}
+
+% Sections
+\input{sections/main.tex}
+
+% Bibliography
+\bibliographystyle{IEEEtran}
+% Bibliography file
+\bibliography{bibliography/article}
+
+\end{document}

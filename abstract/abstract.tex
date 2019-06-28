@@ -1,0 +1,13 @@
+%!TEX root = ../article.tex
+
+% Abstract
+\begin{abstract}
+
+Nowadays, users' sensitive data in edge computing devices (desktops, laptops, and tablets, etc.) is at high risk because they run applications on potentially compromised or malicious systems. To address this problem, hardware manufacturers such as Intel released a new processor feature called Software Guard eXtension (SGX), and provisions shielded executions (i.e., enclaves) for security-sensitive computations. Regrettably, Intel SGX's design objectives omit trusted I/O paths. Without such guarantees, it is unlikely for an enclave to fulfill its security and privacy purposes because the source or sink of data may have been corrupted.
+
+To this end, we propose a novel architecture called \textsc{Aurora} to provide trusted I/O paths for enclave programs even in the presence of untrusted system software.
+Specifically, \textsc{Aurora} exploits two commercial-off-the-shelf x86 platform features (System Management Mode, SMM and SGX) and establishes a secure channel between an enclave program and target device.
+Furthermore, we design and implement trusted paths for HID keyboard, serial port printer, hardware clocks, and USB mass storage, respectively. Leveraging these trusted paths, we protect real-world applications including OpenSSH client, OpenSSL server/client and SQLite database.
+Security evaluations show that \textsc{Aurora} mitigates several kinds of I/O related attacks. Performance evaluations demonstrate that \textsc{Aurora} introduces acceptable overheads.
+
+\end{abstract}
