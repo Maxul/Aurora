@@ -340,6 +340,148 @@ To avoid exploitable vulnerabilities, we use well known static analysis tool Cla
 Although  SMM-based mechanism can be used to route many peripheral I/O events, it itself cannot be used to protect the frame buffers and therefore fall short of providing a trusted display. This is because on X86 platform, SMRAM area by default starts at the same address as the VGA space, therefore SMVisor cannot obtain the frame buffer. It can be solved by redirecting  SMRAM to another higher memory area without overlaying the VGA space. However, as  SMM-based protection has performance implications~\cite{DBLP:conf/iiswc/DelgadoK13}, we recommend that users can use Intel PAVP (assisted by Intel ME) and SGX~\cite{DBLP:conf/isca/HoekstraLPPC13} for real-time scenarios such as an online-chatting conference.
 
 
+\section{Evaluation}\label{performance}
+
+In this section, we evaluate the performance of \textsc{Aurora} framework and the trusted I/O paths. Our experiments are carried out on  an Intel Core i7-7700HQ 2.8GHz CPU with 16GB of memory, running Ubuntu 16.04 LTS and SGX SDK 2.4 and SGX driver 1.9.
+
+\subsection{Framework Overhead}
+%% 我们使用pi计算做评估，不同触发周期和抢占时间
+We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers/piprogram.html} program, which has no interaction with the external system, to measure the performance of \textsc{Aurora} with as little noise as possible. We ran the program till achieving 4,000,000 digits of precision, and used two durations (70us and 150us) to emulate different real-world environments.
+
+%% 一个线程触发，一个线程计时
+%% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
+Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
+
+\begin{table}[t]
+	\centering
+	\caption{Measuring \textsc{Aurora}'s overhead by calculating Pi.}
+	\label{table:pi}
+	\begin{tabular}{rrrrr}
+		\toprule
+		\multirow{2}{*}{\textbf{Interval}} & \multicolumn{2}{c}{\textbf{Time cost (s)}} & \multicolumn{2}{c}{\textbf{Overhead ratio}} \\\cmidrule{2-3}	 \cmidrule{4-5}
+		& 70us & 150us & 70us & 150us \\
+		\midrule
+		Baseline & 8.545 & 8.635 & 0 & 0\\
+		1000ms & 9.045 & 9.025 & 5.85\% & 4.52\%\\
+		100ms & 9.605 & 9.590 & 12.40\% & 11.06\%\\
+		10ms & 10.180 & 10.455 & 18.90\% & 21.08\%\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+\subsection{Trusted Clock Benchmark}\label{time_bench}
+%It is important to quantify how much time is required to attain a trusted clock service since the potential service latency impacts the freshness of message and indicates the response speed. 
+For this experiment, we measured the complete trusted clock procedure for 10000 time and used the average value. Table \ref{table:breaktime} shows the time cost for each step in a trusted clock path, as explained in \autoref{workflow}. We can see that the clock service takes most of time. This is because 1) the RTC driver has to read clock value twice to check if the clock is updating its time data; 2) The RTC involves several \textsf{INS} instructions to read each field of a calendar time, and costs 14us to obtain a complete wall-clock time in one request; 3) The other 4 timers cost roughly 10us in sum. The total  time cost (84us) satisfies the requirement of real-world trusted timestamps.
+\begin{table}[t]
+	\centering
+	\caption{ Breakdown of the trusted clock service}
+	\small
+	\label{table:breaktime}
+	\begin{tabular}{lr}
+		\toprule
+		\textbf{Action Step} & \textbf{Time Cost(us)} \\
+		\midrule
+		EPC encryption & 2\\
+		Copy to DRAM & 2\\
+		Switch to SMM & 13\\
+		Copy to SMRAM & 0\\
+		SMM decryption & 3\\
+		Clock Service & 44\\
+		SMM encryption & 3\\
+		Copy to DRAM & 0\\
+		Return and enter SGX & 12\\
+		Copy to EPC & 3\\
+		EPC decryption & 2\\
+		\bottomrule
+	\end{tabular}
+\end{table}
+\begin{table*}[t]
+	\centering
+	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME)}
+	\label{table:timeservice}
+	\small
+	\begin{tabular}{llllrccr}%{ |c|c|c|c|c|c|c|c| }
+		\toprule
+		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
+		\midrule
+		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
+		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
+		OS Kernel & ocall & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
+		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
+		\bottomrule
+	\end{tabular}
+\end{table*}
+
+For comparison, we measured the performance of other clock providers. The results are shown in \autoref{table:timeservice}. Due to the fact that there are no input dependent branches in the secure channel (the channel simply transfers the I/O packets), we argue that our secure session is safe from side-channel attacks such as the timing attacks. 
+Among existing approaches, \textsc{Aurora} outperforms remote clock (the 2nd row) and Intel's reference clock (the 3rd row) by introducing very low latency, while achieving the same resolution (nanosecond-level) as OS services (the 4th row). 
+%Note that any approach can be arbitrarily delayed in that the untrusted OS is in charge of the enclave thread scheduling. We treat intentionally time delay as a form of Denial-of-Service attack.
+
+% 测试结果说明Aurora方法下的串口响应速度更快，和Linux原生方法频繁的上下文代价有关
+\subsection{Serial Port Output Benchmark}
+
+\begin{table}[h]
+	\centering
+	\caption{Serial-port benchmark comparison between Linux and \textsc{Aurora}.}
+	\label{table:serial}
+	\small
+	\begin{tabular}{lrrr}
+		\toprule
+		\textbf{Payload Size(KB)} & \textbf{Linux(s)} & \textbf{Aurora(s)} & \textbf{Speedup(\%)} \\
+		\midrule
+		4 & 0.03 & 0.03 & 0.0 \\
+		64 & 0.32 & 0.24 & 25.0 \\
+		256 & 1.08 & 0.87 & 19.4 \\
+		1024 & 3.95 & 3.43 & 13.2 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+It is rather difficult to measure the overall time during which a printer accepts and finishes a print job, because we have to re-flash the printer firmware to hook its time function. Therefore, we redirected the serial port to a local file. 
+To compare the serial output performance between native Linux and \textsc{Aurora}, we measured the time cost of writing the test data of different sizes to the serial-port address in Linux and in \textsc{Aurora}, respectively. \autoref{table:serial} shows the experimental results. \textsc{Aurora} performs better than native Linux because \textsc{Aurora} uses batch mechanism (\autoref{batch}) to reduce the frequent mode transitions while Linux has more user/kernel mode transitions when writing large data to serial port. Note that, for the larger outputted data, the speedup decreases due to cryptographic computations in \textsc{Aurora}.
+
+\subsection{Trusted USB Storage Benchmark}
+
+\begin{table}[h]	
+	\centering
+	\caption{Storage throughput comparison between Linux and \textsc{Aurora}.}
+	\label{table:dd}
+	\small
+	\begin{tabular}{lllr}
+		\toprule
+		\multirow{2}{*}{\textbf{Payload Size(MB)}} & \textbf{Linux} & \textbf{Aurora} & \textbf{Slowdown} \\ 
+		& \textbf{(MB/s)} & \textbf{(MB/s)} & \textbf{(\%)} \\
+		\midrule
+		4 & 32.9 & 31.8 & 3.3 \\
+		64 & 40.9 & 39.2 & 4.2 \\
+		256 & 42.7 & 40.4 & 5.3 \\
+		1024 & 53.2 & 47.5 & 10.7 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+To compare the overhead introduced when applying \textsc{Aurora}'s trusted I/O path on USB storage devices, we used \emph{dd} program with options \textsf{fsync} and \textsf{direct} to write variable sizes of contents to a USB mass storage device on native Linux system as the baseline. To avoid the side-effect of any buffer mechanism, we use Linux raw device to mount and initialize the USB device. % to bypass any file system interference. We then measure the overheads of using Aurora's SMVisor for MAC verification added to each block request in the request and response path. We did not use any encryption in this experiment. 
+The throughput results are shown in \autoref{table:dd} where the size of each block is set to 4KB. \textsc{Aurora} achieves approximately 90\% of the baseline throughput when writing 1GB to device. The major overheads are contributed by SMM/Protected mode transitions and cryptographic computations on each block.
+
+\subsection{Security Effectiveness}\label{security}
+In this section, we evaluate \textsc{Aurora}'s reliability with several security tests.
+
+\textbf{Keylogging Attack.}
+To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, 
+%and xkbcat\footnote{https://github.com/anko/xkbcat}, 
+a kernel-level rootkit  keylogger\footnote{https://github.com/arunpn123/keylogger}, 
+%and Linux-Keylogger\footnote{https://github.com/nijindal/Linux-Keylogger} 
+and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
+
+\textbf{Output Corruption Attack.}
+We leveraged a DMA-based NIC device to launch output corruption attack when using Aurora's trusted serial printer service. Since  SMRAM and EPC RAM are strongly isolated by architectural protections, only meaningless content (0xFF) is obtained. Therefore no secrets are leaked. We then conducted another DMA attack to corrupt SMM drivers outside of SMRAM. SMVisor detected its integrity tampered  and rejected subsequent requests, then notified the enclave application. Moreover, we conducted another DMA attack to corrupt the content of shared memory of the secure session. Both SMVisor and Tlibaurora can verify the broken MAC and restart a new session.
+
+\textbf{Time Deception Attack.}
+To evaluate \textsc{Aurora}’s trusted clock, we intentionally modified the RTC when an enclave issued a request for trusted clock. Tlibaurora detected the attacks successfully and indicated a failure. For instance, \textsf{gettimeofday()} returns -1 and sets the global variable \textit{errno} appropriately. Existing C library specification does not have a flag indicating time attacks, the enclave logic may keep requesting until obtaining a valid time value. We support failure handling in Tlibaurora to help enclaves deal with such situations.
+
+\textbf{Storage Deception Attack.}
+We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis.
+
+
 \section{Case Studies}\label{casestudy}
 Aurora provides uniform abstractions (standard POSIX APIs) for the SGX applications, which need not be modified, to maintain platform-independence and thus achieve nice usability. We implemented trusted I/O paths for three real-world applications to illustrate the usability of \textsc{Aurora}.
 
@@ -429,8 +571,33 @@ We integrated \textsc{Aurora}'s Tlibaurora into existing SGX-SQLite projects\foo
 %To protect the data, Tlibaurora's shim layer uses the symmetric key derived from user password and in-enclave nonce values to encrypt the file payloads, and uses the cryptographic primitives from Intel SGX SDK to compute MAC values for blocks. 
 To avoid password leak, we use \textsc{Aurora}'s trusted input path to obtain users' password from keyboard devices. Moreover, \textsc{Aurora}'s secure session protects the confidentiality and integrity of data between SQLite enclaves and SMVisor.   %Last but not least, Tlibaurora library uses the cryptographic primitives from Intel SGX SDK to compute MAC values for block request and response messages.
 
-We evaluated the enhanced SQLite performance by inserting a randomly generated record to a big table for 1000 times. To make a fair comparison, we set the synchronize flag to "FULL" to avoid the uncertainty of I/O caching. When SGX-SQLite invokes Tlibaurora file APIs, it opens the USB storage device as a raw block file in direct I/O mode and reads/writes data using 4KB block size. In our experiment, the native insertion transactions for 1000 times cost 17.3 seconds while the ones with \textsc{Aurora}'s trusted path cost 20.5 seconds. About 18\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}. %Since the USB DMA transfer is designed as an asynchronous mechanism, the delay is not that explicit. 
-%We plan to combine with existing in-enclave filesystem support~\cite{OBLIVIATE2018} for \textsc{Aurora}'s trusted storage path.
+\begin{table}	
+	\centering
+	\caption{TPC-H benchmark comparison between native SGX-SQLite and \textsc{Aurora}-SQLite.}
+	\label{table:tpch}
+	\small
+	\begin{tabular}{lrrr}
+		\toprule
+		\textbf{Query} & \textbf{SGX-SQLite(s)} & \textbf{Aurora-SQLite(s)} & \textbf{Slowdown(\%)} \\
+		\midrule
+		02 & 4.68 & 5.10 & 8.97 \\
+		11 & 1.29 & 1.42 & 10.08 \\
+		16 & 1.08 & 1.10 & 5.30 \\
+		17 & 91.26 & 93.30 & 2.23 \\
+		18 & 24.98 & 25.91 & 3.72 \\
+		19 & 93.15 & 98.25 & 5.47 \\
+		21 & 39.68 & 43.16 & 9.04 \\
+		\bottomrule
+	\end{tabular}
+\end{table}
+
+We evaluated the enhanced SQLite performance by running standardized TPC-H benchmark\footnote{http://www.tpc.org/tpch/} over a large database. % (around 1.3GB).
+We modified the benchmark queries in order to make them possible to be executed in SQLite. Unfortunately, not all queries can be executed.
+To directly measure the overhead introduced by \textsc{Aurora}'s infrastructure, we set the synchronize flag to \textsf{FULL} to avoid the uncertainty of I/O caching. When SQLite invokes Tlibaurora file APIs, it opens the USB storage device in direct I/O mode and reads/writes data using 4KB block size.
+%In our experiment, the native insertion transactions for 1000 times cost 17.3 seconds while the ones with \textsc{Aurora}'s trusted path cost 20.5 seconds. About 18\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
+
+\autoref{table:tpch} shows the successfully executed queries and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
+Note that these are the worst-case overheads (because we have set \textsf{PRAGMA synchronous} to \textsf{FULL}) as almost all databases have their own optimized caching mechanisms for better performance.
 
 %\subsection{Secure Password Manager}
 %To ease the cumbersome memoir on multiple passwords, password manager is a convenient tool that allows the end-user to store and manage her passwords. It uses a master key to encrypt the rest of password in a local database. %Though convenient, it may still be vulnerable and render user critical information at risk. An advanced malware can hook the activity of the password manager application and log the corresponding the key events when a "new entry" GUI window is popped up, compromising the security of user password.
@@ -440,146 +607,7 @@ We evaluated the enhanced SQLite performance by inserting a randomly generated r
 %We retrofitted KeePassX, an open source GUI password manager, to demonstrate Aurora's trusted input path. We ported the crypto process, kdbx password database and entry editing functions into an enclave program, so that the user's passwords are clear text only in the enclave. When the user adds a new entry, a GUI message box is popped up, and SMVisor is activated to intercept all keyboard inputs. %Since the GUI logic is untrusted, we do not allow the GUI to touch the real password character, rather, after the user releases a key, the enclave sends the \textit{signal} to GUI and the GUI displays an asteroid. 
 %After the user clicks the "OK" button, her username, password and other private information are then encrypted inside the enclave, and later restored into the database in encrypted format.
 
-\section{Evaluation}\label{performance}
 
-In this section, we evaluate the performance of \textsc{Aurora} framework and the trusted I/O paths. Our experiments are carried out on  an Intel Core i7-7700HQ 2.8GHz CPU with 16GB of memory, running Ubuntu 16.04 LTS and SGX SDK 2.4 and SGX driver 1.9.
-
-\subsection{Framework Overhead}
-%% 我们使用pi计算做评估，不同触发周期和抢占时间
-We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers/piprogram.html} program, which has no interaction with the external system, to measure the performance of \textsc{Aurora} with as little noise as possible. We ran the program till achieving 4,000,000 digits of precision, and used two durations (70us and 150us) to emulate different real-world environments.
-
-%% 一个线程触发，一个线程计时
-%% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
-Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
-
-\begin{table}[t]
-	\centering
-	\caption{Measuring \textsc{Aurora}'s overhead by calculating Pi.}
-	\label{table:pi}
-	\begin{tabular}{rrrrr}
-		\toprule
-		\multirow{2}{*}{\textbf{Interval}} & \multicolumn{2}{c}{\textbf{Time cost (s)}} & \multicolumn{2}{c}{\textbf{Overhead ratio}} \\\cmidrule{2-3}	 \cmidrule{4-5}
-		& 70us & 150us & 70us & 150us \\
-		\midrule
-		Baseline & 8.545 & 8.635 & 0 & 0\\
-		1000ms & 9.045 & 9.025 & 5.85\% & 4.52\%\\
-		100ms & 9.605 & 9.590 & 12.40\% & 11.06\%\\
-		10ms & 10.180 & 10.455 & 18.90\% & 21.08\%\\
-		\bottomrule
-	\end{tabular}
-\end{table}
-
-\subsection{Trusted Clock Benchmark}\label{time_bench}
-%It is important to quantify how much time is required to attain a trusted clock service since the potential service latency impacts the freshness of message and indicates the response speed. 
-For this experiment, we measured the complete trusted clock procedure for 10000 time and used the average value. Table \ref{table:breaktime} shows the time cost for each step in a trusted clock path, as explained in \autoref{workflow}. We can see that the clock service takes most of time. This is because 1) the RTC driver has to read clock value twice to check if the clock is updating its time data; 2) The RTC involves several \textsf{INS} instructions to read each field of a calendar time, and costs 14us to obtain a complete wall-clock time in one request; 3) The other 4 timers cost roughly 10us in sum. The total  time cost (84us) satisfies the requirement of real-world trusted timestamps.
-\begin{table}[t]
-	\centering
-	\caption{ Breakdown of the trusted clock service}
-	\small
-	\label{table:breaktime}
-	\begin{tabular}{lr}
-		\toprule
-		\textbf{Action Step} & \textbf{Time Cost(us)} \\
-		\midrule
-		EPC encryption & 2\\
-		Copy to DRAM & 2\\
-		Switch to SMM & 13\\
-		Copy to SMRAM & 0\\
-		SMM decryption & 3\\
-		Clock Service & 44\\
-		SMM encryption & 3\\
-		Copy to DRAM & 0\\
-		Return and enter SGX & 12\\
-		Copy to EPC & 3\\
-		EPC decryption & 2\\
-		\bottomrule
-	\end{tabular}
-\end{table}
-\begin{table*}[t]
-	\centering
-	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME)}
-	\label{table:timeservice}
-	\small
-	\begin{tabular}{llllrccr}%{ |c|c|c|c|c|c|c|c| }
-		\toprule
-		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
-		\midrule
-		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
-		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
-		OS Kernel & ocall & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
-		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
-		\bottomrule
-	\end{tabular}
-\end{table*}
-
-For comparison, we measured the performance of other clock providers. The results are shown in \autoref{table:timeservice}. Due to the fact that there are no input dependent branches in the secure channel (the channel simply transfers the I/O packets), we argue that our secure session is safe from side-channel attacks like timing attacks. 
-Among existing approaches, \textsc{Aurora} outperforms remote clock (the 2nd row) and Intel's reference clock (the 3rd row) by introducing very low latency, while achieving the same resolution (nanosecond-level) as OS services (the 4th row). 
-%Note that any approach can be arbitrarily delayed in that the untrusted OS is in charge of the enclave thread scheduling. We treat intentionally time delay as a form of Denial-of-Service attack.
-
-% 测试结果说明Aurora方法下的串口响应速度更快，和Linux原生方法频繁的上下文代价有关
-\subsection{Serial Port Output Benchmark}
-
-\begin{table}[h]
-	\centering
-	\caption{Serial-port benchmark comparison between Linux and \textsc{Aurora}.}
-	\label{table:serial}
-	\small
-	\begin{tabular}{lrrr}
-		\toprule
-		\textbf{Payload Size(KB)} & \textbf{Linux(s)} & \textbf{Aurora(s)} & \textbf{Speedup(\%)} \\
-		\midrule
-		4 & 0.03 & 0.03 & 0.0 \\
-		64 & 0.32 & 0.24 & 25.0 \\
-		256 & 1.08 & 0.87 & 19.4 \\
-		1024 & 3.95 & 3.43 & 13.2 \\
-		\bottomrule
-	\end{tabular}
-\end{table}
-
-It is rather difficult to measure the overall time during which a printer accepts and finishes a print job, because we have to re-flash the printer firmware to hook its time function. Therefore, we redirected the serial port to a local file. 
-To compare the serial output performance between native Linux and \textsc{Aurora}, we measured the time cost of writing the test data of different sizes to the serial-port address in Linux and in \textsc{Aurora}, respectively. \autoref{table:serial} shows the experimental results. \textsc{Aurora} performs better than native Linux because \textsc{Aurora} uses batch mechanism (\autoref{batch}) to reduce the frequent mode transitions while Linux has more user/kernel mode transitions when writing large data to serial port. Note that, for the larger outputted data, the speedup decreases due to cryptographic computations in \textsc{Aurora}.
-
-\subsection{Trusted USB Storage Benchmark}
-
-\begin{table}[h]	
-	\centering
-	\caption{Storage throughput comparison between Linux and \textsc{Aurora}.}
-	\label{table:dd}
-	\small
-	\begin{tabular}{lllr}
-		\toprule
-		\multirow{2}{*}{\textbf{Payload Size(MB)}} & \textbf{Linux} & \textbf{Aurora} & \textbf{Slowdown} \\ 
-		& \textbf{(MB/s)} & \textbf{(MB/s)} & \textbf{(\%)} \\
-		\midrule
-		4 & 32.9 & 31.8 & 3.3 \\
-		64 & 40.9 & 39.2 & 4.2 \\
-		256 & 42.7 & 40.4 & 5.3 \\
-		1024 & 53.2 & 47.5 & 10.7 \\
-		\bottomrule
-	\end{tabular}
-\end{table}
-
-To compare the overhead introduced when applying \textsc{Aurora}'s trusted I/O path on USB storage devices, we used \emph{dd} program with options "fsync" and "direct" to write variable sizes of contents to a USB mass storage device on native Linux system as the baseline. To avoid the side-effect of any buffer mechanism, we use Linux raw device to mount and initialize the USB device. % to bypass any file system interference. We then measure the overheads of using Aurora's SMVisor for MAC verification added to each block request in the request and response path. We did not use any encryption in this experiment. 
-The throughput results are shown in \autoref{table:dd} where the size of each block is set to 4KB. \textsc{Aurora} achieves approximately 90\% of the baseline throughput when writing 1GB to device. The major overheads are contributed by SMM/Protected mode transitions and cryptographic computations on each block.
-
-\subsection{Security Effectiveness}\label{security}
-In this section, we evaluate \textsc{Aurora}'s reliability with several security tests.
-
-\textbf{Keylogging Attack.}
-To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, 
-%and xkbcat\footnote{https://github.com/anko/xkbcat}, 
-a kernel-level rootkit  keylogger\footnote{https://github.com/arunpn123/keylogger}, 
-%and Linux-Keylogger\footnote{https://github.com/nijindal/Linux-Keylogger} 
-and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
-
-\textbf{Output Corruption Attack.}
-We leveraged a DMA-based NIC device to launch output corruption attack when using Aurora's trusted serial printer service. Since  SMRAM and EPC RAM are strongly isolated by architectural protections, only meaningless content (0xFF) is obtained. Therefore no secrets are leaked. We then conducted another DMA attack to corrupt SMM drivers outside of SMRAM. SMVisor detected its integrity tampered  and rejected subsequent requests, then notified the enclave application. Moreover, we conducted another DMA attack to corrupt the content of shared memory of the secure session. Both SMVisor and Tlibaurora can verify the broken MAC and restart a new session.
-
-\textbf{Time Deception Attack.}
-To evaluate \textsc{Aurora}’s trusted clock, we intentionally modified the RTC when an enclave issued a request for trusted clock. Tlibaurora detected the attacks successfully and indicated a failure. For instance, \textsf{gettimeofday()} returns -1 and sets the global variable \textit{errno} appropriately. Existing C library specification does not have a flag indicating time attacks, the enclave logic may keep requesting until obtaining a valid time value. We support failure handling in Tlibaurora to help enclaves deal with such situations.
-
-\textbf{Storage Deception Attack.}
-We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis.
 
 \section{Related Work}
 Our technique was inspired by Scotch~\cite{DBLP:conf/raid/LeachZW17} which is the first work that combines SGX and SMM to audit VM resource usage. Its motivation differs from ours.
