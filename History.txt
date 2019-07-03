@@ -4,3 +4,6 @@ History:
 
 6.20 PC speaker
 6.27 Minor fixes, intro
+
+标题修改：
+SMM Supervisor -> SMVisor
