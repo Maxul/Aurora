@@ -29,7 +29,7 @@ Today's SGX ecosystem has not yet come up with an off-the-shelf solution to trus
 %% 所以，我们有了Aurora，专门提供可信IO服务的Aurora，它负责为enclave提供一条直达IO设备的可信路径。这个方法引入了一个可以执行特权指令、访问IO 设备的特殊“enclave”，即系统管理模式RAM。它是现有X86架构下的一块高特权飞地，同一模式下的飞地外代码、其他模式都无法访问和修改它。我们在SMRAM 和enclave间构建本地的可信路径，就能很好地给enclave提供绕过不可信区域的IO可信路径！
 On Intel x86 platforms, we observe that 1) all peripheral I/O devices are connected with south-bridge to I/O Advanced Programmable Interrupt Controller (I/O APIC), 2) I/O interrupts can be rerouted to System Management Interrupt (SMI) via configuring I/O APIC and 3) the SMI handler is initialized by Unified Extensible Firmware Interface (UEFI) which contains kinds of device drivers; thus, we hold the insight that \textit{the SMI handler} is a perfect candidate to provide trusted I/O paths for security-critical applications.
 
-In this paper, we present \textsc{Aurora}, a novel architecture that safeguards I/O paths for SGX enclaves. To directly communicate with hardware devices without depending on the untrusted software, \textsc{Aurora} introduces System Management RAM (SMRAM) as a special enclave. SMRAM is a tamper-proof memory region used only in System Management Mode (SMM), much like the enclave region with SGX protection in user mode. \textsc{Aurora} delegates I/O requests from enclaves to the SMI handler protected inside SMRAM. We call this particular SMI handler \textit{SMVisor}. In hardware, SMVisor is safe from any corruptions by other privileged software (including OS, hypervisor/HV). Therefore, Intel SGX enclaves can safely use I/O devices while remaining  \textit{transparent} to the underlying OS.
+In this paper, we present \textsc{Aurora}, a novel architecture that safeguards I/O paths of SGX enclaves. To directly communicate with hardware devices without depending on the untrusted software, \textsc{Aurora} introduces System Management RAM (SMRAM) as a special enclave. SMRAM is a tamper-proof memory region used only in System Management Mode (SMM), much like the enclave region with SGX protection in user mode. \textsc{Aurora} delegates I/O requests from enclaves to the SMI handler protected inside SMRAM. We call this particular SMI handler \textit{SMVisor}. In hardware, SMVisor is safe from any corruptions by other privileged software (including OS and hypervisor). Therefore, Intel SGX enclaves can safely use I/O devices while remaining \textit{transparent} to the underlying OS.
 
 %% 我们的贡献点有：Aurora是个全新的系统服务框架；四款全新的服务；实际的应用评估证明其可用性。
 To summarize, this paper makes these contributions:
@@ -39,6 +39,13 @@ To summarize, this paper makes these contributions:
 \item Design and implementation of four types of trusted I/O paths (\autoref{tpaths}): keyboard, printer, clock, and storage, based on \textsc{Aurora}.  To the best of our knowledge, we are the first to provide these \emph{realistic} trusted I/O paths for SGX enclaves on the client side.
 \item Three case studies: OpenSSH client, OpenSSL client, and SQLite database using trusted I/O paths provided by \textsc{Aurora} (\autoref{casestudy}). Experimental results show that \textsc{Aurora} can protect them from typical I/O related attacks (\autoref{security}) with acceptable performance overhead (\autoref{performance}).
 \end{enumerate}
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[height=0.18\textheight]{figures/arch.pdf}
+	\caption{\textsc{Aurora}'s architecture. The gray areas denote untrusted parts, and the white ones represent \textsc{Aurora}'s trusted computing base.}
+	\label{fig:architecture}
+\end{figure*}
 
 \section{Background and Problem Definition}
 In this section, we first describe two architecture features of Intel's CPU, and then propose two types of trusted I/O paths based on the characteristics of devices. Finally, we describe the threat model and assumptions.
@@ -51,7 +58,7 @@ Intel SGX SDK provides a function call mechanism for enclaves via ECALL and OCAL
 \subsection{System Management Mode}
 System Management Mode (SMM) is the most privileged mode for handling system-wide functions like power management, hardware control, etc. Upon a System Management Interrupt (SMI), the CPU saves the system states and switches to SMM, and then executes a predefined logic (SMI handler) inside system management memory (SMRAM). SMRAM is fully transparent to the OS/HV since they are essentially suspended. An \textit{RSM} (resume) instruction is executed at the end of the SMI handler to switch back to the protected mode.  SMRAM is fully isolated by the hardware, any code outside SMRAM cannot access or modify it. We deem SMRAM as a special \textit{enclave} in SMM.
 
-The SMI handler is initialized by UEFI, and  SMRAM can be locked by configuring D\_OPEN and D\_LCK bits in SMRAM control register. Therefore, the SMI handler is safe from corruption after booting. Moreover, the SMI handler can access all CPU registers, I/O devices, and physical memory (except for SGX EPCs), and thus we expand the SMI Handler to design \textsc{Aurora}'s SMVisor in \autoref{arch}.
+The SMI handler is initialized by UEFI, and  SMRAM can be locked by configuring \emph{D\_OPEN} and \emph{D\_LCK} bits in SMRAM control register. Therefore, the SMI handler is safe from corruption after booting. Moreover, the SMI handler can access all CPU registers, I/O devices, and physical memory (except for SGX EPCs), and thus we expand the SMI Handler to design \textsc{Aurora}'s SMVisor in \autoref{arch}.
 
 \subsection{Trusted I/O Paths}\label{types}
 
@@ -64,7 +71,7 @@ We define the term \emph{trusted I/O paths} in trusted execution environments (T
 \item \textbf{Trusted I/O paths for data-provider/-consumer devices.}
 Although SGX provides user-space strong isolation for program end-points (i.e. enclaves), most of the devices provide and/or consume plaintext messages. Cases vary from human input data (e.g., keyboard scan code) to outputted data (e.g., a stream of bits to printer/display), which cannot guarantee the confidentiality and integrity in an untrusted or compromised system. Therefore, for trusted paths of this kind, \textsc{Aurora} encrypts/decrypts in SMRAM the data from/to devices for enclaves to protect the data from the untrusted system.
 
-\item \textbf{Trusted I/O paths for data-storage/-transmitter devices.} Storage disks and network adapters are typical storage/transmitter devices, and they don't require the stored/transmitted data in plaintext. Instead, both kinds of devices can deal with encrypted data without learning the semantics of the data. However, both devices need a pile of software stacks (e.g., file system, network protocol) to work correctly and remain compatible. Building trusted paths for them is very challenging. One possible approach is to decompose existing software stack and port them into the trusted applications, which will greatly swell the TCB and attack vectors. As an alternative, \textsc{Aurora} leverages a forward-and-verify method and reuses existing software stacks in a \emph{secure} manner.
+\item \textbf{Trusted I/O paths for data-storage/-transmitter devices.} Storage disks and network adapters are typical storage/transmitter devices, and they don't require the stored/transmitted data in plaintext. Instead, both kinds of devices can deal with encrypted data without learning the semantics of the data. However, both devices need a pile of software stacks (e.g., file system, network protocol) to work correctly and remain compatible. Building trusted paths for them is very challenging. One possible approach is to decompose existing software stack and port them into the trusted applications, which will greatly swell the TCB and attack vectors. As an alternative, \textsc{Aurora} leverages a \emph{distrust but verify} method and reuses existing software stacks in a secure manner.
 
 \end{enumerate}
 
@@ -72,72 +79,66 @@ Although SGX provides user-space strong isolation for program end-points (i.e. e
 We consider an adversary that is able to compromise the target system. He can directly attack enclave interfaces visible to the OS, and actively reconfigure any devices (e.g., modify a device’s MMIO region, or change the operating mode of a device) and perform arbitrary operations (e.g., trigger interrupts, issue DMA write requests) using any I/O commands.
 
 \textsc{Aurora} requires a modern Intel platform with SGX and TPM support. We assume the hardware and SMRAM firmware (the microkernel we implement) of the host machine is trusted. We do not trust the UEFI drivers but verify whether they operate following their specifications, or perform unintended operations: e.g., intercept bus traffic, or write to an address that is not specified in DMA commands. Our assumptions significantly reduce the TCB on the target host as modern commodity system contains a large system software (UEFI, possibly hypervisor, kernel and other applications) when dealing with I/O devices.
-Even though we do not consider physical attacks on devices, side-channel attacks~\cite{chen2019sgxpectre, ridl}, or denial-of-service attacks, we adopt side-channel free cryptographic algorithms and apply an oblivious packet transferring technique.
-
-\begin{figure*}[t]
-	\centering
-	\includegraphics[height=0.2\textheight]{figures/arch.pdf}
-	\caption{\textsc{Aurora}'s architecture. The gray areas denote untrusted parts, and the white ones represent \textsc{Aurora}'s trusted computing base.}
-	\label{fig:architecture}
-\end{figure*}
+Even though we do not consider physical attacks on devices, side-channel attacks~\cite{chen2019sgxpectre, ridl}, or denial-of-service attacks, we adopt side-channel free cryptographic algorithms and apply an oblivious packet transferring technique (\autoref{enhancement}).
 
 
 \section{Design}
 %% 我们用的是SMM和SGX两种CPU特性组成的“可靠、可信”系统服务。Aurora命名缘由。
-To provide trusted I/O paths, we employ the combination of SGX and SMM, both of which are processor enforced protection features. As they are offered at the opposite ends of Intel privilege-level model, we name our framework after \textsc{Aurora}\footnote{Aurora takes place in the polar regions, i.e. south and north of the earth.}.
+To provide trusted I/O paths, we employ the combination of SGX and SMM, both of which are processor enforced protection features. Because they are offered at the opposite ends of Intel privilege-level model, we name our framework after \textsc{Aurora}\footnote{Aurora takes place in the polar regions, \emph{i.e.,} south and north of the earth.}.
 
 %% SMM call，代理+模拟 模式。Enclave的请求最终在SSV处得到响应，和syscall、vmcall是一个道理。
-Establishing a trusted path in \textsc{Aurora} consists of the following three steps. First, \textsc{Aurora} builds a secure session between SMVisor and an enclave that performs an I/O request. Second, SMVisor receives the request via the secure session without leaking knowledge to the untrusted system. Third, SMVisor interacts with the target device on behalf of the enclave, and performs the desired I/O operations to respond to the request. The procedure is conceptually similar to a \textit{syscall} or \textit{vmcall}. We name it an \textit{smcall} for convenience.
+Establishing a trusted path in \textsc{Aurora} consists of the following three steps. First, \textsc{Aurora} builds a secure session between SMVisor and an enclave that performs an I/O request. Second, SMVisor receives the request via the secure session without leaking knowledge to the untrusted system. Third, SMVisor interacts with the target device on behalf of the enclave, and performs desired I/O operations for the request. The procedure is conceptually similar to a \textit{syscall} or \textit{vmcall}. We name this an \textit{smcall} for brevity.
 
 \subsection{Architecture}\label{arch}
 
-To take a bird's eye view, \textsc{Aurora} is composed of three components: SMVisor, libaurora and a secure session established between SMVisor and libaurora, as shown in Figure \ref{fig:architecture}.
+\textsc{Aurora} is composed of three components: SMVisor, libaurora and a secure session established between SMVisor and libaurora, as shown in Figure \ref{fig:architecture}.
 
 %% SMVisor 负责判断中断源/设备，调用驱动，以此提供服务。SSV对驱动模型有限制。
 %% libaurora 把SGX缺少的IO相关接口补上，方便移植
 %% SSV和libaurora之间有信道连接
 \begin{enumerate}%[(1)]
-\item SMVisor takes charge of the target devices from the untrusted kernel. It dispatches device interrupts to either kernel or enclaves. SMVisor uses an forward-and-verify mechanism to securely invoke SMM drivers outside SMRAM.
+\item SMVisor takes charge of the target devices from the untrusted kernel. It dispatches device interrupts to either kernel or enclaves. SMVisor securely invokes UEFI drivers outside of SMRAM (\autoref{driver}).
 \item Libaurora consists of two parts. The trusted part (Tlibaurora) complements unsupported I/O APIs in Intel SGX SDK library, helping developers secure enclave's I/O paths. The untrusted part (Ulibaurora) is responsible for forwarding \textit{smcalls} to SMVisor.  %; an ENCLAVEID can be obtained using \textit{EREPORT} instruction
-\item The secure session exchanges encrypted messages between SMVisor and enclaves via a shared memory provided by a kernel module named ashmd.  \textsc{Aurora} leverages a 5-tuple for each message: \textit{(ENCLID, DEVID, OPTYPE, PAYLOAD, MAC)}. The first two arguments indicate the program endpoint and device endpoint respectively.  The third stands for the I/O operation type. The fourth carries the message data and the last one is the message authentication code used for integrity protection. All the arguments are marshaled and encrypted. 
+\item The secure session exchanges encrypted messages between SMVisor and an enclave via a shared memory provided by a kernel module named ashmd.  \textsc{Aurora} leverages a 5-tuple: \textit{(ENCLID, DEVID, OPTYPE, PAYLOAD, MAC)} for each message. The first two arguments indicate the program endpoint and device endpoint respectively.  The third stands for the type of I/O operation. The fourth carries the message data and the last is the message authentication code used for integrity protection. All the arguments are marshaled and encrypted. 
 
 \end{enumerate}
 
 %% 和LibOS一样，我们也是要减小对不可信OS的依赖，我们甚至没有和OS交互的数据流接口，只有中断对其是不透明的。
 %% 但又和LibOS不一样，我们连驱动都不用不可信OS的，以此保证数据来源的可靠性和流出的不受干扰。
 Like library OSes~\cite{DBLP:journals/tocs/BaumannPH15, DBLP:conf/usenix/TsaiPV17, shinde_panoply:_2017}, \textsc{Aurora} has few interfaces with the untrusted OS. %Only interrupts are forwarded by the OS to SMVisor.
-The data plane of an enclave is protected by advanced encryption schemes accelerated by the processor (e.g. AES-GCM with AES-NI support), and the data flows between the enclave and SMVisor are completely invisible to the OS. Unlike library OSes, which delegate I/O operations to the untrusted OS, \textsc{Aurora} ships security-sensitive parts of these operations into SMVisor, thus eliminating the reliance on untrusted OS.
+The data plane of an enclave is protected by advanced encryption schemes accelerated by the processor (\emph{i.e.,} AES-GCM with AES-NI support), and the data flows between the enclave and SMVisor are completely invisible to the OS. Unlike library OSes, which delegate I/O operations to the untrusted OS, \textsc{Aurora} ships security-sensitive parts of these operations into SMVisor, thus eliminating the reliance on untrusted OS.
 
 \subsection{Workflow}\label{workflow}
-To help understand the workflow of a trusted path in \textsc{Aurora}, we break down the process of output path and input path respectively into sequential phases, as illustrated in left and right part respectively of \autoref{fig:workflow}.
-
-An output request is triggered by an enclave as a synchronous exception, as depicted as follows:\\
-%\par
-~~\textcircled{\footnotesize{1}} The user logic in the enclave issues an output request by invoking  Tlibaurora's APIs;\\
-~~\textcircled{\footnotesize{2}} Tlibaurora marshals and encrypts the request's arguments, and invokes Ulibaurora outside the enclave to relay the request;\\ %sends the request via the secure session, via an OCALL
-~~\textcircled{\footnotesize{3}} Ulibaurora ioctls the ashmd module to trigger an \textit{smcall};\\
-~~\textcircled{\footnotesize{4}} SMVisor is notified and obtains the encrypted requests from the secure session;\\
-~~\textcircled{\footnotesize{5}} SMVisor decrypts the request and invokes the corresponding  driver;\\
-~~\textcircled{\footnotesize{6}} The driver operates the raw output data in PCI space or MMIO buffer;\\
-~~\textcircled{\footnotesize{7}} The driver returns a result code to SMVisor. Finally, SMVisor  executes \textit{RSM} to return to protected mode. \\
-
-\par
-An input request from an enclave results in a device interrupt, as depicted as follows:\\
-%\par
-~~\textcircled{\footnotesize{1}} The target device triggers an interrupt, and the control is routed to SMVisor which is the interrupt handler;\\
-~~\textcircled{\footnotesize{2}} SMVisor invokes the device driver to handle the input request;\\
-~~\textcircled{\footnotesize{3}} The driver gets the raw input data and sends it to SMVisor;\\
-~~\textcircled{\footnotesize{4}} SMVisor encrypts the data inside SMRAM, and sends it to the target enclave via the secure session;\\
-~~\textcircled{\footnotesize{5}} The system switches back to protected mode and the ashmd module uses a signal to notify Ulibaurora;\\
-~~\textcircled{\footnotesize{6}} Ulibaurora invokes Tlibaurora via an ECALL to receive encrypted data;\\
-~~\textcircled{\footnotesize{7}} The enclave decrypts the encrypted data and finally obtains the raw input data. % from the secure session.
 
 \begin{figure}
 	\centering
-	\includegraphics[width=0.5\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
+	\includegraphics[width=0.46\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
 	\caption{The workflow of a trusted I/O path in \textsc{Aurora}. }%The white areas denote the TCB.
 	\label{fig:workflow}
 \end{figure}
+
+To help understand the workflow of a trusted path in \textsc{Aurora}, we break down the process of the output path and input path respectively into sequential phases, as illustrated in left and right part of \autoref{fig:workflow}.
+
+An output request is triggered by an enclave as an exception, as depicted as follows:\\
+%\par
+~~\textcircled{\footnotesize{1}} The user logic in an enclave issues an output request by invoking  Tlibaurora's APIs;\\
+~~\textcircled{\footnotesize{2}} Tlibaurora marshals and encrypts the request's arguments, and invokes Ulibaurora outside the enclave to relay the request;\\ %sends the request via the secure session, via an OCALL
+~~\textcircled{\footnotesize{3}} Ulibaurora \emph{ioctls} the ashmd module to trigger an \textit{smcall};\\
+~~\textcircled{\footnotesize{4}} SMVisor is notified and obtains the encrypted requests from the secure session;\\
+~~\textcircled{\footnotesize{5}} SMVisor decrypts the request and invokes the driver;\\
+~~\textcircled{\footnotesize{6}} The driver processes output data in PCI space or MMIO buffer;\\
+~~\textcircled{\footnotesize{7}} The driver returns a result code to SMVisor. In the end, SMVisor executes \textit{RSM} to return to protected mode. \\
+
+\par
+An input request from an enclave causes a device interrupt, as depicted as follows:\\
+%\par
+~~\textcircled{\footnotesize{1}} The target device triggers an interrupt, and the control flow is rerouted to SMVisor which has the interrupt handler;\\
+~~\textcircled{\footnotesize{2}} SMVisor invokes the driver to handle the input request;\\
+~~\textcircled{\footnotesize{3}} The driver gets the raw input data and sends it to SMVisor;\\
+~~\textcircled{\footnotesize{4}} SMVisor encrypts the data inside SMRAM, and sends it to the target enclave via the secure session;\\
+~~\textcircled{\footnotesize{5}} The system switches back to protected mode and the ashmd module uses a signal to notify Ulibaurora;\\
+~~\textcircled{\footnotesize{6}} Ulibaurora invokes Tlibaurora to receive the encrypted data;\\
+~~\textcircled{\footnotesize{7}} The enclave decrypts the encrypted data and finally obtains the raw input data. % from the secure session.
 
 \subsection{SMVisor}\label{ssv}
 
@@ -149,35 +150,30 @@ SMVisor is the core component in \textsc{Aurora}.  It may take charge of multipl
 
 %% SSV不用管OS要地址，自己能找到设备对应PCI内存区；当然，要是OS重新初始化了这个设备，把PCI空间移到被的地方，我是没有办法的|##|
 %\emph{Device Manipulation.} 
-To perform I/O operations correctly, a driver should know the exact I/O ports of the target device. At the time of system boot, SMVisor collects all device information and records their memory mapped I/O (MMIO) base addresses into a \textsf{PCI BAR Table}, thereafter the matching drivers can manipulate the mapped PCI configuration space according to the table.
+To perform I/O operations correctly, a driver should know the exact I/O ports of the target device. At the time of system boot, SMVisor collects all device information and records their memory mapped I/O (MMIO) base addresses into a \emph{PCI BAR Table}, thereafter the matching drivers can manipulate the mapped PCI configuration space according to the table.
 
 %% 为了防止传给driver的数据有问题，每次请求的参数都会被SSV检查；同时也限制driver的内存访问，防止隐私泄漏
 %To avoid possible data leakage, SMVisor checks the memory access of the driver and clears the allocated RAM for the driver.
 \textbf{Sanitization Module.}\label{shield}
-SMVisor verifies the validity of parameters passed to the drivers (e.g. a PCI structure pointer should point to one of the entries in the \textsf{PCI BAR Table} within SMRAM) and checks the return values according to the device specifications (e.g. each driver function has a specific range of error codes) as well as its functional correctness. When the parameters or return values are invalid, SMVisor notifies the enclave that a potential attack from OS may occur, and rejects the subsequent requests. Moreover, SMVisor checks the memory boundary (i.e. starting address and region range) that the driver tries to access to ensure that it can not write data outside of SMRAM.
-
-Furthermore, a driver may require more memory space during runtime (e.g. for DMA with devices), therefore SMVisor maintains a dynamic heap with a sanity-checking feature \cite{DBLP:conf/ccs/SilvestroLCLL17}. To avoid possible memory leaks, the manager frees all allocated memory for the driver before returning to the protected mode.
+SMVisor verifies the validity of parameters passed to the drivers (e.g. a PCI structure pointer should point to one of the entries in the \emph{PCI BAR Table} within SMRAM) and checks the return values according to the device specifications (e.g. each driver function has a specific range of error codes) as well as its functional correctness. When the parameters or return values are invalid, SMVisor notifies the enclave that a potential attack from OS may occur, and rejects the subsequent requests. Moreover, SMVisor checks the memory boundary (i.e. starting address and region range) that the driver tries to access to ensure that it can not write data outside of SMRAM. Furthermore, a driver may require more memory space during runtime (e.g. for DMA with devices), therefore SMVisor maintains a dynamic heap with a sanity-checking feature \cite{DBLP:conf/ccs/SilvestroLCLL17}. To avoid possible memory leaks, the manager frees all allocated memory for the driver before returning to the protected mode.
 
 \subsection{SMM Drivers}\label{driver}
-In this section, we describe how SMVisor safely reuses existing drivers. In modern monolithic systems, OS drivers are coupled with the kernel. These drivers lack of effective isolation from the rest of the untrusted systems, therefore we do not use them.
+In this section, we describe how SMVisor safely reuses existing drivers. In modern monolithic systems, OS drivers are coupled with the kernel. These drivers lack of effective isolation from the rest of the untrusted systems, therefore we do not use them. Instead, since existing open-source UEFI firmware, such as Coreboot\footnote{https://www.coreboot.org/} and Project Mu\footnote{https://microsoft.github.io/mu/}, contain various drivers in their Driver eXecution Environment (DXE), and the code of these drivers are significantly scrutinized compared to the proprietary code, we reuse these drivers and forward the device interrupt for them to handle. This OS-neutral design allows \textsc{Aurora} to support different kinds of OS, e.g., Linux, Windows, or MacOS.
 
-Instead, since existing open-source UEFI firmware, such as Coreboot\footnote{https://www.coreboot.org/} and Project Mu\footnote{https://microsoft.github.io/mu/}, contain various drivers in their Driver eXecution Environment (DXE), and the code of these drivers are significantly scrutinized compared to the proprietary code, we reuse these drivers and forward the device interrupt for them to handle. This OS-neutral design allows \textsc{Aurora} to support different kinds of OS, e.g., Linux, Windows, or MacOS.
+Furthermore, we reuse UEFI drivers in a secure manner. At the booting stage, SMVisor calculates the hash checksum of each driver and stores its integrity signature inside SMRAM. When receiving an I/O request, SMVisor verifies the integrity of the corresponding driver to ensure it is not tampered with. When executing a driver, SMVisor puts its data, heap, stack segments inside SMRAM, and thus ensures them inaccessible to OS/HV. Moreover, SMVisor uses its sanitization module to validate the behavior of the driver, as described in \autoref{shield}.
 
-Furthermore, we reuse UEFI drivers in a secure manner. At the booting stage, SMVisor calculates the hash checksum of each driver and stores its integrity signature inside SMRAM. When receiving an I/O request, SMVisor verifies the integrity of the corresponding driver to ensure that it is not tampered with. When executing a driver, SMVisor puts its data, heap, stack segments inside SMRAM, and thus ensures them inaccessible to OS/HV. Moreover, SMVisor uses its sanitization module to validate the behavior of the driver, as described in \autoref{shield}.
-
-\subsection{Secure Session}\label{secure_session}
-
-We design a secure session that protects the message exchange between SMVisor and enclaves. We first describe \textsc{Aurora}'s kernel module that provides the shared memory for message exchange, then we state the lifecycle of a secure session and optimization techniques upon it.
-
-\subsubsection{Kernel Module (ashmd)}
+\subsection{Kernel Module (ashmd)}
 %% Enclave可以在内部操作不可信内存区数据，从而避免退出；Iago会导致DoS，不会泄漏数据
 SGX memory model is asymmetric: the processor prohibits code outside of enclave to access the enclave, whereas the enclave code can access addresses outside the enclave. \textsc{Aurora} leverages shared memory to bridge SMVisor and enclaves. For instance, we use a kernel module \emph{ashmd} to allocate contiguous physical memory as shared memory. For an enclave program, Ulibaurora opens and mmaps this device into its  address space. As a result, Tlibaurora can directly operate on this memory in enclave mode. If the kernel launches memory-based Iago attacks~\cite{DBLP:conf/asplos/CheckowayS13} such as mapping to an illegal location, Tlibaurora will verify whether the whole mmaped memory is outside of the enclave, otherwise the secure channel will not be established. 
 
 In order to distinguish interrupts to enclaves from others, ashmd module allocates an IRQ from the system. When ashmd receives an IPI from  SMVisor, it knows this is a response to an enclave.
 Moreover, to prevent OS from modifying I/O redirection table, ashmd module spawns a kernel thread which holds a copy of  I/O APIC table and continually check the status of I/O APIC  table. Once it detects a modification by OS, it tries to restore it with the reserved one. If the attempt fails, ashmd  immediately notifies the target enclave with an error code.  We treat the denial of ashmd thread scheduling as a kind of DoS attack, which is beyond the scope of the paper.
 
+\subsection{Secure Session}\label{secure_session}
+
 %% 初始必须双发交换密钥，只要Intel服务器在机器启动时验证SSV，enclave加载时验证enclave，然后利用各自得到信道交换密钥就可以。虽然代价大，但只是初始化慢而已。
-\subsubsection{Secure Session Life-cycle}
+%\subsubsection{Secure Session Life-cycle}
+We design a secure session that protects the message exchange between SMVisor and enclaves. 
 The initial stage of the secure session is to ensure whether both parties are trusted or not. On one hand, the untrusted privileged system may launch SMI-specific fuzzing attacks on  SMVisor. On the other hand, the privileged system may fake the identity as  SMVisor since it can emulate an SMI and try to \textit{handshake} with an enclave. To mitigate such a man-in-the-middle attack, we introduce \textit{mutual attestation}. When each of both parties trusts the other, they can exchange a symmetric secret key using \textit{key agreement}, as depicted in \autoref{fig:mutual}. %both parties are acknowledged
 
 \begin{figure}[t]
@@ -188,7 +184,7 @@ The initial stage of the secure session is to ensure whether both parties are tr
 \end{figure}
 
 \textbf{Mutual Attestation.}
-During a measured boot, Intel boot guard~\cite{ruan_platform_2014}  hashes a computer's firmware and stores its cryptographic hash in the TPM Platform Configuration Register (PCR) \cite{tcg_trusted_2014}. The final PCR value reflects the whole boot process. If the process is modified, the PCR value will be different.
+During a measured boot, Intel Boot Guard~\cite{ruan_platform_2014} hashes the firmware and stores its cryptographic hash in the TPM Platform Configuration Register (PCR) \cite{tcg_trusted_2014}. The final PCR value reflects the whole boot process. If the process is tampered with, the PCR value will differ.
 
 In order to ease SMVisor attestation, we use the launch enclave provided by the Intel SGX Platform Software to attest SMVisor for one-time effort. Afterward, any application enclave running on the same machine can query the launch enclave to know if SMVisor attestation has succeeded. To attest  SMVisor, the launch enclave needs to verify the PCR value by requesting a TPM quote, which includes a cryptographic signature over the PCR value alongside with a fresh nonce. This ensures the integrity of the PCR value and prevents replay attacks. Besides, an application enclave attests itself to the launch enclave using Intel's local attestation.
 
@@ -205,21 +201,22 @@ After the mutual attestation, the SMVisor and an enclave establish an authentica
 
 \textbf{Disconnection.}
 %% 和进程退出释放资源一样，我们这个并不老是影响系统
-When an enclave finishes its requests, its Tlibaurora logic will notify SMVisor to terminate the secure session and release resources. When there is no live session, SMVisor will disable its interrupt routing and thereafter make no impact on the system.
+When an enclave finishes its requests, its Tlibaurora logic will notify SMVisor to terminate the secure session and release resources. When there remains no live session, SMVisor will disable its interrupt routing and thereafter make no impact on the system.
 
-\subsubsection{Enhancement and Optimization}
+\subsection{Enhancement and Optimization}\label{enhancement}
 To provide better security and performance, \textsc{Aurora} introduces \textit{hardware encryption}, \textit{data obliviousness} and \textit{batch mechanism for smcalls}.
 
 %% 硬件加速效果如何
 \textbf{Hardware Encryption.}
-Intel extends X86 ISA with AES-NI set and claims to prevent known side-channel attacks. We make use of it to address the same concern and use constant-time encryption algorithm to defeat cache timing attacks. The hardware-accelerated encryption also decreases the preemption time in SMM mode.
+Intel extends x86 ISA with AES-NI and claims to prevent known side-channel attacks. We make use of it to address the same concern and use constant-time algorithm to defeat cache timing attacks. This hardware acceleration also decreases the preemption time in SMM.
 
 %% 数据隐藏，保证每次内容的随机性
 \textbf{Data Obliviousness.}
 In an established session, if an enclave requests the same I/O path twice and the results happen to be the same, the encrypted messages will also be identical because the session key is not changed. An adversary can infer secrets by observing such side channels. To prevent such secrecy leakage, \textsc{Aurora} pads all messages with random value to the same length (4KB, same size as one EPC page), which restricts possible information leakage at page-level. %The message buffers must start with page-aligned address.
 
 \textbf{Batched SMCALLs.}\label{batch}
-To reduce the context switches between SMM mode and enclave mode, \textsc{Aurora} supports a batched \textit{smcalls} mechanism using two dedicated, lock-free ring buffers for input and output respectively. It is especially useful in the case of highly frequent requests. Enclaves can set a desired threshold, so Tlibaurora will coalesce these \textit{smcalls}. For asynchronous I/O requests, the mechanism can benefit the enclave with higher throughput. %We use this optimization in secure VPN services in our experiment~\autoref{openvpn}.% For instant requests like clock, the requestor can directly issue an \textit{smcall} which skips the batch.% when combined with asynchronous, batched mechanism~\cite{DBLP:conf/osdi/ArnautovTGKMPLM16}
+To reduce the context switches between SMVisor and enclaves, \textsc{Aurora} supports a batched \textit{smcalls} mechanism using two dedicated, lock-free ring buffers for input and output respectively. %It is especially useful in the case of highly frequent requests.
+Enclaves can set a desired threshold, so Tlibaurora will coalesce these \textit{smcalls}. For asynchronous I/O requests, the mechanism can benefit the enclave with higher throughput.
 
 
 \section{Trusted I/O Paths between Enclaves and Devices}\label{tpaths}
@@ -232,7 +229,7 @@ In this section, we illustrate how to build trusted I/O paths for data-provider/
 Trusted input ensures that third-party software on the same computer has no access to the user's input intended for an enclave application. In other words, trusted input paths exclude other untrusted software including the underlying OS from sharing the input device. We use \textsc{Aurora} to secure user's private textual inputs from the keyboard to the enclave.%, and SGX perfectly secures the input inside the enclave.
 
 \textbf{Trusted Input Mode.}
-When an enclave issues an input request, SMVisor routes the keyboard interrupt (IRQ 1 by default) to SMI. All of the subsequent keyboard scan codes are cached inside SMRAM. We call this case \emph{trusted input mode}. After an \emph{enter} key is hit and released, SMVisor recovers the I/O APIC redirection table and exits trusted input mode. Finally, SMVisor encrypts the inputs and sends it to the secure channel. The desired enclave can then take it from the channel and decrypt it. %the user hits the enter key and releases it
+When an enclave issues a trusted input request, SMVisor routes the keyboard interrupt (IRQ 1 by default) to SMI. All of the subsequent keyboard scan codes are then cached inside SMRAM. We call this case \emph{trusted input mode}. After an \emph{enter} key is hit and released, SMVisor recovers the I/O APIC redirection table and exits trusted input mode. Finally, SMVisor encrypts the input and sends it to the secure channel. The desired enclave obtains it from the channel and decrypt it.
 
 \textbf{User Verification.}
 Phishing attacks, where an adversary exploits social engineering tricks to allure a user to leak her privacy data, are a threat to trusted input. For example, a malware might present a fake login interface that prompts a user to enter her password.
@@ -241,7 +238,7 @@ When the system first boots, the network is disabled by the SMVisor, and we assu
 % Tlibaurora first generates a random integer $N$ in the interval of [1, 10], and displays the integer number in the screen as a captcha. Tlibaurora sends $N$ to SMVisor. SMVisor blinks the \textit{Caps Lock} LED light for exactly $N$ times. Since the captcha is generated with noises inside the enclave, it is hard for the adversary to mimic the process. %Before the enclave application displays the prompt that awaits the user to enter her password, a controlled computer might have displayed the same content and user directly inputs the secrecy without waiting for the computer to enter trusted input mode.
 
 \subsection{Trusted Serial Printer Output}\label{output_service}
-Today shared print services are very common, by which colleagues in a unit or students in a college print their documents. Users' private or sensitive data may also be printed using such infrastructures. Malware on these public machines/printers can easily steal these data for malicious purposes like industrial espionage or illegal data acquisition. To mitigate this threat, we build trusted serial-port path for shared print services.
+Shared print services are very common today, by which colleagues in a unit or students in a college print their documents using the same physical machine. Users' private or sensitive data may also be printed using such infrastructures. Malware or compromised systems running on these shared machines can steal these data for malicious purposes like industrial espionage or illegal data acquisition. To mitigate this threat, we build trusted serial-port path for shared print services.
 
 When an enclave requests the trusted printer service, it encrypts the output packet and sends the encrypted packet to SMVisor.  SMVisor receives the packet and decrypts it to plaintext packet. As the packets are usually held with printer-specific format, SMVisor issues the corresponding serial port driver and adds this job into its task queue. Afterward, SMVisor returns the status code from the printer devices to the enclave end-point.
 
@@ -267,20 +264,17 @@ Though the hardware clocks can be controlled and modified by the malicious OS, d
 
 For the case where the hardware clocks are altered in a consistent way, that is, all the timers are altered in the same offset, we propose a novel algorithm to detect such an attack. We use a dedicated counting thread \cite{DBLP:conf/dimva/SchwarzWGMM17} guarded inside an enclave occupying a logical thread on the same CPU core. Such a sibling thread will block the possibility of side-channel attacks when hyper-threading is active. The counting thread provides $dT$ and the difference of hardware timers provides $dt$, we use first-order derivative $dt/dT$ to detect the possible time attack. Currently, we set the confidence interval to 0.05, which denotes the possible altering in the timers' rising slope. If the slope changes much, we assume an attack.
 
-%\section{Trusted I/O Paths for Data-Storage/-Transmitter Devices}\label{path2}
-%As to trusted I/O paths for data-storage/-transmitter devices, \textsc{Aurora} reuses existing system services and verifies the correctness of the I/O services provided by the untrusted systems, as discussed in section~\autoref{types}. In this section, we present this kind of trusted paths by taking USB storage as an example.
-
 \subsection{Trusted USB Storage}\label{storage_service}
 Storage software contains block and file system. A compromised OS may silently discard data written by the application or return fabricated data during a read operation. It is a serious issue when secure data storage is  necessary for ensuring correct operation (e.g., secure logging, APT monitoring and compliance). In this section, we extend \textsc{Aurora} to support secure USB disk. Note that \textsc{Aurora}'s approach is also suitable and easy to support for other storage systems.
 
 % 对于不关注隐私的可信路径，我们主要是利用中断来判断读写的请求。因此每次都显式调用fsync；另外，最大的问题在于如何找到DMA高速缓存区域。
-%\emph{Basic USB Workflow.}
-%A USB host controller (UHC), consisting of several physical USB ports, is connected to one USB endpoints.  A UHC is controlled via a set of memory-mapped I/O (MMIO) registers and presented as a PCI device in an OS, which uses a USB Host Controller Driver (UHCD) to communicate with it. A USB driver talks to its device using one of three protocols (e.g., EHCI). %to issue request packets defined by the specific UHCD. % These contain a number of pointers to various linked lists that track attached devices and map requests to devices.  %A higher-level device driver communicates with the specific endpoint device via the HCD and hardware. 
+%\textbf{Basic USB Workflow.}
+%A USB host controller (UHC), consisting of several physical USB ports, is connected to one USB endpoints.  A UHC is controlled via a set of memory-mapped I/O (MMIO) registers and presented as a PCI device in an OS, which uses a USB Host Controller Driver (UHCD) to communicate with it. %to issue request packets defined by the specific UHCD. % These contain a number of pointers to various linked lists that track attached devices and map requests to devices.  %A higher-level device driver communicates with the specific endpoint device via the HCD and hardware. 
 %We take an EHCI device in Linux as an example, its device driver sends a USB request block (URB) to query information from the device. The UHCD creates a transfer descriptor (TD) for this request and links it to a list \textit{reqlist} for the device. Once this request is completed, the UHC will unlink the TD from \textit{reqlist} and link it to a \textit{donelist}. It also writes result data into memory via DMA and sends an interrupt indicating it has new data on \textit{donelist}. On receiving this interrupt, the UHCD walks \textit{donelist} and processes the TDs found. It then notifies the device driver (typically via an asynchronous callback) that its URB is serviced and the data is available.
 
 \textbf{Secure Storage Protocol.}
 %The IRQ number of the device is acquired by ashmd module and then notified from ashmd to the underlying SMVisor. 
-When an enclave issues a request for a USB disk, SMVisor leverages I/O interrupt rerouting mechanism to monitor and deal with every operation of the USB device, including transferring data and control commands via a secure session in \textsc{Aurora}. In Linux, the data is by default transferred using bulk mode and is exchanged based on DMA mechanism, which stores the DMA address and buffers location in a {scatter-gather} list. The ashmd module can obtain these information from corresponding drivers.
+When an enclave issues a request for a USB disk, SMVisor leverages I/O interrupt rerouting mechanism to monitor and deal with every operation of the USB device, including transferring data and control commands via a secure session in \textsc{Aurora}. In Linux, the data is by default transferred using bulk mode and is exchanged based on DMA mechanism, which stores the DMA address and buffers location in a {scatter-gather} list. The ashmd module obtains the information from the USB driver.
 
 % 描述了基本的协议，保证每次读写请求都能得到SSV的确认
 %% 无法使用S2BR的设计，因为没有维护任何文件名和文件大小的基本信息，我们无法以文件作为MAC完整性检查的基本单位
@@ -293,23 +287,16 @@ After capturing the USB Request Blocks (URBs), SMVisor passes them to the USB de
 We modified the SMI handler of CoreBoot to implement \textsc{Aurora}'s SMVisor, and modified the drivers of CoreBoot project to export interfaces which can be invoked by SMVisor. We disable the caching mechanism in SMM and check the access permission using the memory type range registers (MTRR) to ensure SMVisor's protection. For the sake of compatibility, Tlibaurora supports standard
 POSIX APIs, so enclave developers need not write OCALLs.
 
-To avoid machine check exception within SMM, we enable the Streaming SIMD Extensions (SSE) bit in control register CR0. With SSE and AES-NI, we boost encryption performance. For example, with AES-NI support, AES-256-GCM encryption and decryption on 4KB data in SMM mode costs 9us on average, for comparison,  without AES-NI, AES-128-GCM implementation of Intel IPP Crypto library~\cite{Intel_IPP_2017_Update_2} costs 597us.
+To avoid machine check exception within SMM, we enable the Streaming SIMD Extensions (SSE) bit in control register CR0. With SSE and AES-NI, we boost encryption performance. For example, with AES-NI support, AES-256-GCM encryption and decryption on 4KB data in SMM costs 9us on average, for comparison,  without AES-NI, AES-128-GCM implementation of Intel IPP Crypto library~\cite{Intel_IPP_2017_Update_2} costs 597us.
 
 We implement a specific kernel model ashmd. Like Linux SGX driver, we use but do not trust them. the ashmd module is intended to relay the communications between hardware enclaves and SMVisor.
-%We reused the implementations of i8042 driver from SeaBIOS. To issue a trusted input request, an enclave simply needs to link against libaurora. Tlibaurora automatically changes the semantics of read() API, i.e. reading  /dev/aurora instead of stdio (or /dev/tty). The raw inputs will be put in the buffer parameter of read() via the secure session. %eventually
-
-%We reused the implementations of serial-port driver from SeaBIOS, SMVisor explicitly invokes the fflush operation to make sure that all writes to a serial port are completely sent. %After each write request from the enclave, SMVisor
-
-%We reused the implementations of EHCI driver from SeaBIOS. To obtain the DMA address held in the \textit{scatter-gather} list structure, we use ashmd to inspect the address and hand it over to the SMVisor.
-
-%We reused the implementations of timer/clock drivers from SeaBIOS, including RTC, HPET, PIT, TSC, and ACPI/PM timer. We minimize SMM preemption time by placing most of the clock processing logic in the Tlibaurora. For the sake of compatibility, Tlibaurora supports standard libc time APIs, therefore developers can benefit from trusted clock service without writing OCALLs. Tlibaurora performs the validation using attack-awareness algorithm and is responsible for detecting time attacks.
 
 %% 强调TCB小
 \subsection{Code Base and Binary Size}\label{codebase}
 %% 说明移植的轻松程度，强调运行时占据物理内存的少
 %We use SLOCCount\footnote{https://www.dwheeler.com/sloccount} to calculate the overall C Lines of Code (LoC) of current \textsc{Aurora} implementation. As shown in \autoref{code_base},  \textsc{Aurora}'s TCB (3393 LoC) is far less than other architectures (see \autoref{arch_compare}). 
 \textsc{Aurora}'s trusted components (i.e., SMVisor, ashmd, Tlibaurora, Cryptography) have 3393 lines of C code, and untrusted component (i.e., Ulibaurora) has 273 lines of C code. Compared to Wimpy kernel \cite{zhou_dancing_2014} which has 16K lines of code, it is smaller and simpler enough to facilitate formal verification.
-Both SMRAM and EPC RAM are scarce memory resource. For instance, the system-wide EPC limit is approximately 93MB and the SMRAM is 4MB by default on our platform. We measure the final size of resulted stripped binary images. Our modification on CoreBoot only add 3.9\% on its total size (120.2KB V.S. 115.7KB). The enclave.so  linked against Tlibaurora is 696KB in size and 1MB including runtime stack and heap manager. Smaller codebase denotes smaller TCB introduced. %This implies that we could have roughly 56 enclaves with trusted I/O support in parallel without EPC paging.
+Both SMRAM and EPC RAM are scarce memory resource. For instance, the system-wide EPC limit is approximately 93MB and the SMRAM is 4MB by default on our platform. We measure the final size of resulted stripped binary images. Our modification on CoreBoot only add 3.9\% on its total size (120.2KB V.S. 115.7KB). The enclave.so  linked against Tlibaurora is 696KB in size and 1MB including runtime stack and heap manager. Smaller codebase denotes smaller TCB introduced.
 
 \subsection{Code Quality}
 To avoid exploitable vulnerabilities, we use well known static analysis tool Clang Static Analyzer\footnote{http://clang-analyzer.llvm.org/index.html} over \textsc{Aurora}'s code base and fix all bugs we found. Besides, as \textsc{Aurora} is quite small and its complexity is obviously lower than that of the formally verified microkernel~\cite{DBLP:conf/sosp/KleinEHACDEEKNSTW09}, we believe it is reasonable to put \textsc{Aurora} within the reach of formal verification.
@@ -345,14 +332,8 @@ Although  SMM-based mechanism can be used to route many peripheral I/O events, i
 In this section, we evaluate the performance of \textsc{Aurora} framework and the trusted I/O paths. Our experiments are carried out on  an Intel Core i7-7700HQ 2.8GHz CPU with 16GB of memory, running Ubuntu 16.04 LTS and SGX SDK 2.4 and SGX driver 1.9.
 
 \subsection{Framework Overhead}
-%% 我们使用pi计算做评估，不同触发周期和抢占时间
-We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers/piprogram.html} program, which has no interaction with the external system, to measure the performance of \textsc{Aurora} with as little noise as possible. We ran the program till achieving 4,000,000 digits of precision, and used two durations (70us and 150us) to emulate different real-world environments.
 
-%% 一个线程触发，一个线程计时
-%% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
-Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
-
-\begin{table}[t]
+\begin{table}
 	\centering
 	\caption{Measuring \textsc{Aurora}'s overhead by calculating Pi.}
 	\label{table:pi}
@@ -369,10 +350,16 @@ Specifically, we ran two threads: one thread (T1) running Pi number calculation,
 	\end{tabular}
 \end{table}
 
+%% 我们使用pi计算做评估，不同触发周期和抢占时间
+We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers/piprogram.html} program, which has no interaction with the external system, to measure the performance of \textsc{Aurora} with as little noise as possible. We ran the program till achieving 4,000,000 digits of precision, and used two durations (70us and 150us) to emulate different real-world environments.
+
+%% 一个线程触发，一个线程计时
+%% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
+Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
+
 \subsection{Trusted Clock Benchmark}\label{time_bench}
-%It is important to quantify how much time is required to attain a trusted clock service since the potential service latency impacts the freshness of message and indicates the response speed. 
-For this experiment, we measured the complete trusted clock procedure for 10000 time and used the average value. Table \ref{table:breaktime} shows the time cost for each step in a trusted clock path, as explained in \autoref{workflow}. We can see that the clock service takes most of time. This is because 1) the RTC driver has to read clock value twice to check if the clock is updating its time data; 2) The RTC involves several \textsf{INS} instructions to read each field of a calendar time, and costs 14us to obtain a complete wall-clock time in one request; 3) The other 4 timers cost roughly 10us in sum. The total  time cost (84us) satisfies the requirement of real-world trusted timestamps.
-\begin{table}[t]
+
+\begin{table}
 	\centering
 	\caption{ Breakdown of the trusted clock service}
 	\small
@@ -395,31 +382,35 @@ For this experiment, we measured the complete trusted clock procedure for 10000 
 		\bottomrule
 	\end{tabular}
 \end{table}
-\begin{table*}[t]
-	\centering
-	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME)}
-	\label{table:timeservice}
-	\small
-	\begin{tabular}{llllrccr}%{ |c|c|c|c|c|c|c|c| }
-		\toprule
-		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
-		\midrule
-		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
-		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
-		OS Kernel & ocall & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
-		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
-		\bottomrule
-	\end{tabular}
-\end{table*}
+
+%It is important to quantify how much time is required to attain a trusted clock service since the potential service latency impacts the freshness of message and indicates the response speed. 
+For this experiment, we measured the complete trusted clock procedure for 1,000 time and used the average value. Table \ref{table:breaktime} shows the time cost for each step in a trusted clock path, as explained in \autoref{workflow}. We can see that the clock service takes most of time. This is because 1) the RTC driver has to read clock value twice to check if the clock is updating its time data; 2) The RTC involves several \textsf{INS} instructions to read each field of a calendar time, and costs 14us to obtain a complete wall-clock time in one request; 3) The other 4 timers cost roughly 10us in sum. The total  time cost (84us) satisfies the requirement of real-world trusted timestamps.
 
 For comparison, we measured the performance of other clock providers. The results are shown in \autoref{table:timeservice}. Due to the fact that there are no input dependent branches in the secure channel (the channel simply transfers the I/O packets), we argue that our secure session is safe from side-channel attacks such as the timing attacks. 
 Among existing approaches, \textsc{Aurora} outperforms remote clock (the 2nd row) and Intel's reference clock (the 3rd row) by introducing very low latency, while achieving the same resolution (nanosecond-level) as OS services (the 4th row). 
 %Note that any approach can be arbitrarily delayed in that the untrusted OS is in charge of the enclave thread scheduling. We treat intentionally time delay as a form of Denial-of-Service attack.
 
+\begin{table*}[t]
+	\centering
+	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME)}
+	\label{table:timeservice}
+	\small
+	\begin{tabular}{lllcrccr}
+		\toprule
+		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
+		\midrule
+		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
+		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
+		OS Kernel & OCALL & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
+		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
+		\bottomrule
+	\end{tabular}
+\end{table*}
+
 % 测试结果说明Aurora方法下的串口响应速度更快，和Linux原生方法频繁的上下文代价有关
 \subsection{Serial Port Output Benchmark}
 
-\begin{table}[h]
+\begin{table}[t]
 	\centering
 	\caption{Serial-port benchmark comparison between Linux and \textsc{Aurora}.}
 	\label{table:serial}
@@ -441,7 +432,7 @@ To compare the serial output performance between native Linux and \textsc{Aurora
 
 \subsection{Trusted USB Storage Benchmark}
 
-\begin{table}[h]	
+\begin{table}[t]	
 	\centering
 	\caption{Storage throughput comparison between Linux and \textsc{Aurora}.}
 	\label{table:dd}
@@ -466,11 +457,7 @@ The throughput results are shown in \autoref{table:dd} where the size of each bl
 In this section, we evaluate \textsc{Aurora}'s reliability with several security tests.
 
 \textbf{Keylogging Attack.}
-To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, 
-%and xkbcat\footnote{https://github.com/anko/xkbcat}, 
-a kernel-level rootkit  keylogger\footnote{https://github.com/arunpn123/keylogger}, 
-%and Linux-Keylogger\footnote{https://github.com/nijindal/Linux-Keylogger} 
-and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
+To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, a kernel-level rootkit keylogger\footnote{https://github.com/arunpn123/keylogger}, and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
 
 \textbf{Output Corruption Attack.}
 We leveraged a DMA-based NIC device to launch output corruption attack when using Aurora's trusted serial printer service. Since  SMRAM and EPC RAM are strongly isolated by architectural protections, only meaningless content (0xFF) is obtained. Therefore no secrets are leaked. We then conducted another DMA attack to corrupt SMM drivers outside of SMRAM. SMVisor detected its integrity tampered  and rejected subsequent requests, then notified the enclave application. Moreover, we conducted another DMA attack to corrupt the content of shared memory of the secure session. Both SMVisor and Tlibaurora can verify the broken MAC and restart a new session.
@@ -483,6 +470,7 @@ We modified the kernel driver of SCSI device and randomly dropped several disk I
 
 
 \section{Case Studies}\label{casestudy}
+
 Aurora provides uniform abstractions (standard POSIX APIs) for the SGX applications, which need not be modified, to maintain platform-independence and thus achieve nice usability. We implemented trusted I/O paths for three real-world applications to illustrate the usability of \textsc{Aurora}.
 
 \subsection{Secure OpenSSH Login}\label{openssh}
@@ -608,7 +596,6 @@ Note that these are the worst-case overheads (because we have set \textsf{PRAGMA
 %After the user clicks the "OK" button, her username, password and other private information are then encrypted inside the enclave, and later restored into the database in encrypted format.
 
 
-
 \section{Related Work}
 Our technique was inspired by Scotch~\cite{DBLP:conf/raid/LeachZW17} which is the first work that combines SGX and SMM to audit VM resource usage. Its motivation differs from ours.
 Similar to \textsc{Aurora}'s SMVisor, previous research such as HyperCheck~\cite{DBLP:conf/raid/WangSG10}, HyperSentry~\cite{DBLP:conf/ccs/AzabNWJZS10} and IOCheck~\cite{DBLP:conf/esorics/ZhangWLS14}, also employ a dedicated SMI handler to protect the integrity of the OS kernel, hypervisor or firmware, respectively.
@@ -616,7 +603,7 @@ We next discuss related work of other trusted I/O architectures and trusted path
 
 \subsection{Trusted I/O Architectures}
 
-SGXIO~\cite{weiser_sgxio:_2017} is a conceptual framework that discusses how to provide trusted generic I/O paths for SGX enclaves. It introduces a trusted hypervisor to assist the establishment of the trusted path and requires users to port drivers into enclaves. However, SGXIO is a conceptual design without any implementation and evaluation. Moreover, it is hard for users to port commodity drivers into an enclave because 1) enclave mode does not support privileged instructions like \textsf{IN/OUT} or \textsf{RDMSR/WRMSR} with which drivers read/write I/O ports; 2) it is unclear in the paper \cite{weiser_sgxio:_2017} how to correctly partition drivers. In comparison, \textsc{Aurora}'s drivers are invoked in SMM mode without any instruction restricted. They are monitored and regulated by SMVisor protected inside SMRAM. This reusing technique allows \textsc{Aurora} easily deployed.
+SGXIO~\cite{weiser_sgxio:_2017} is a conceptual framework that discusses how to provide trusted generic I/O paths for SGX enclaves. It introduces a trusted hypervisor to assist the establishment of the trusted path and requires users to port drivers into enclaves. However, SGXIO is a conceptual design without any implementation and evaluation. Moreover, it is hard for users to port commodity drivers into an enclave because 1) enclave mode does not support privileged instructions like \textsf{IN/OUT} or \textsf{RDMSR/WRMSR} with which drivers read/write I/O ports; 2) it is unclear in the paper \cite{weiser_sgxio:_2017} how to correctly partition drivers. In comparison, \textsc{Aurora}'s drivers are invoked in SMM without any instruction restricted. They are monitored and regulated by SMVisor protected inside SMRAM. This reusing technique allows \textsc{Aurora} easily deployed.
 
 Zhou et al.~\cite{zhou_dancing_2014} introduce a micro-hypervisor (named Wimpy) under OS to build trusted paths (TP) between program end-points (PE) and device end-points (DE). They require the PE of a TP includes the device drivers for DEs associated with the TP, and admit that \textit{"running the PE in Ring 3 makes DE driver porting more difficult"}.  Although \textsc{Aurora} and Wimpy share many common security goals, e.g. interrupt isolation and MMIO protection, \textsc{Aurora} exploits CPU features to protect the PEs and reuse DEs securely. As a result, \textsc{Aurora} has smaller TCB than Wimpy. 
 
@@ -648,5 +635,5 @@ We present \textsc{Aurora}, a novel architecture which provides trusted I/O path
 
 \section*{Acknowledgement}
 
-The authors would like to thank Kai Huang from Intel and Shweta Shinde from NUS for their generous help and constructive comments. The authors also thank the anonymous reviewers for their valuable feedback that help improve the article. 
+The authors would like to thank Kai Huang from Intel Corporation and Shweta Shinde from National University of Singapore for their generous help and constructive comments. The authors also thank the anonymous reviewers for their valuable feedback that help improve the article. This work was supported by the National Natural Science Foundation of China (NSFC) under Grant No. U1713212 and 91418206.
 
