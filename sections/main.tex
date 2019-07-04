@@ -42,7 +42,7 @@ To summarize, this paper makes these contributions:
 
 \begin{figure*}[t]
 	\centering
-	\includegraphics[height=0.18\textheight]{figures/arch.pdf}
+	\includegraphics[height=0.22\textheight]{figures/arch.pdf}
 	\caption{\textsc{Aurora}'s architecture. The gray areas denote untrusted parts, and the white ones represent \textsc{Aurora}'s trusted computing base.}
 	\label{fig:architecture}
 \end{figure*}
@@ -112,7 +112,7 @@ The data plane of an enclave is protected by advanced encryption schemes acceler
 
 \begin{figure}
 	\centering
-	\includegraphics[width=0.46\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
+	\includegraphics[width=0.5\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
 	\caption{The workflow of a trusted I/O path in \textsc{Aurora}. }%The white areas denote the TCB.
 	\label{fig:workflow}
 \end{figure}
@@ -324,7 +324,7 @@ To avoid exploitable vulnerabilities, we use several well known static analysis 
 %\end{table}
 
 \subsection{Limitation}
-Although  SMM-based mechanism can be used to route many peripheral I/O events, it itself cannot be used to protect the framebuffers and therefore fails to provide a trusted display. This is because SMRAM area by default starts at the same address as the VGA space, therefore SMVisor cannot obtain the frame buffer. It can be solved by redirecting  SMRAM to another higher memory area without overlaying the VGA space. However, as  SMM-based protection has performance implications~\cite{DBLP:conf/iiswc/DelgadoK13}, we recommend that users choose Intel PAVP (assisted by Intel ME) and SGX~\cite{DBLP:conf/isca/HoekstraLPPC13} for real-time scenarios such as video chattings or conferences.
+Although SMM-based mechanism can be used to route many peripheral I/O events, it itself cannot be used to protect the framebuffers and therefore fails to provide a trusted display. This is because SMRAM area by default starts at the same address as the VGA space, therefore SMVisor cannot obtain the framebuffer. It can be solved by redirecting  SMRAM to another higher memory area without overlaying the VGA space. However, as SMM-based protection has performance implications~\cite{DBLP:conf/iiswc/DelgadoK13}, we recommend that users choose Intel PAVP (assisted by Intel ME) and SGX~\cite{DBLP:conf/isca/HoekstraLPPC13} for real-time scenarios such as video chattings or conferences.
 
 
 \section{Evaluation}\label{performance}
@@ -561,9 +561,12 @@ We measured the time cost of certification generation at server side and TLS han
 \subsection{Secure SQLite Database}
 Databases are widely used to store financial transaction records and other sensitive information. Some databases are built upon block devices, while maintaining its own caching mechanisms and storage policies without support of OS's file system, e.g. SQLite database.
 
-We integrated \textsc{Aurora}'s Tlibaurora into existing SGX-SQLite projects\footnote{https://github.com/yerzhan7/SGX\_SQLite} and added code to support standard file system calls such as \textit{open}, \textit{read}, \textit{write}, \textit{stat}, \textit{lstat}, \textit{fstat}, \textit{fsync}, \textit{fcntl}, \textit{ftruncate} and \textit{unlink}. We then eliminated the file-related OCALLs for the untrusted system. 
-%To protect the data, Tlibaurora's shim layer uses the symmetric key derived from user password and in-enclave nonce values to encrypt the file payloads, and uses the cryptographic primitives from Intel SGX SDK to compute MAC values for blocks. 
-To avoid password leak, we use \textsc{Aurora}'s trusted input path to obtain users' passwords from keyboard devices. Moreover, \textsc{Aurora}'s secure session protects the confidentiality and integrity of data between SQLite enclaves and SMVisor.   %Last but not least, Tlibaurora library uses the cryptographic primitives from Intel SGX SDK to compute MAC values for block request and response messages.
+We integrated \textsc{Aurora}'s Tlibaurora into existing SGX-SQLite projects\footnote{https://github.com/yerzhan7/SGX\_SQLite} and added code to support standard file system calls such as \textit{open}, \textit{read}, \textit{write}, \textit{stat}, \textit{lstat}, \textit{fstat}, \textit{fsync}, \textit{fcntl}, \textit{ftruncate} and \textit{unlink}. We then eliminated the file-related OCALLs from the untrusted system. 
+To protect the data, Tlibaurora's shim layer uses a symmetric key derived from user password and in-enclave nonces to encrypt the file payloads. %, and computes MAC values for blocks. 
+To avoid password leak, we use \textsc{Aurora}'s trusted input path to obtain users' passwords from keyboard devices. Moreover, \textsc{Aurora}'s secure session protects the confidentiality and integrity of data between SQLite enclaves and SMVisor.
+When SQLite invokes Tlibaurora file APIs, it opens the USB storage device in direct I/O mode and reads/writes data using 4KB block size. 
+Finally, %to directly measure the overhead introduced by \textsc{Aurora}'s infrastructure, 
+we set the synchronize flag to \textsf{FULL} to avoid the uncertainty of I/O caching.
 
 \begin{table}	
 	\centering
@@ -586,10 +589,8 @@ To avoid password leak, we use \textsc{Aurora}'s trusted input path to obtain us
 \end{table}
 
 We evaluated the enhanced SQLite performance by running standardized TPC-H benchmark\footnote{http://www.tpc.org/tpch/} over a large database. % (around 1.3GB).
-We make minor changes to these benchmark queries in order to make them possible to be executed in SQLite. Unfortunately, not all queries can be executed due to the experiment environment and system configration.
-To directly measure the overhead introduced by \textsc{Aurora}'s infrastructure, we set the synchronize flag to \textsf{FULL} to avoid the uncertainty of I/O caching. When SQLite invokes Tlibaurora file APIs, it opens the USB storage device in direct I/O mode and reads/writes data using 4KB block size.
+We make minor changes to these benchmark queries in order to make them possible to be executed in SQLite. Unfortunately, not all queries can be executed due to the experiment environment and system configration. 
 %In our experiment, the native insertion transactions for 1000 times cost 17.3 seconds while the ones with \textsc{Aurora}'s trusted path cost 20.5 seconds. About 18\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
-
 \autoref{table:tpch} shows the successfully executed queries and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
 Note that these are the worst-case overheads (because we have set \textsf{PRAGMA synchronous} to \textsf{FULL}) as almost all databases have their own optimized caching mechanisms for better performance.
 
