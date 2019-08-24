@@ -1,5 +1,8 @@
 \documentclass[journal,twocolumn,letterpaper,10pt]{IEEEtran}
+\pagestyle{plain}
+
 \usepackage[acronym]{glossaries}
+\newacronym{IEEE}{IEEE}{Transactions on Information Forensics and Security}
 
 \usepackage{epsfig}
 \usepackage{booktabs}
@@ -10,24 +13,19 @@
 \usepackage[]{algorithm2e,algorithmicx}
 \usepackage[bottom]{footmisc}
 \usepackage{graphicx}
-
-\usepackage{hyperref}
+\usepackage[tight,footnotesize]{subfigure}
+\usepackage{booktabs} % For formal tables
+\usepackage[colorlinks, linkcolor=blue,anchorcolor=black,citecolor=blue]{hyperref}
 
 \renewcommand{\sectionautorefname}{\S}
 \renewcommand{\subsectionautorefname}{\S}
 \renewcommand{\subsubsectionautorefname}{\S}
 
+\usepackage{textcomp}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 
-\usepackage{enumitem}
-\usepackage{flushend}
-
 \makeglossaries
-
-\newacronym{IEEE}{IEEE}{Transactions on Information Forensics and Security}
-
-\input{variables.tex}
 
 \title{ Establishing Trusted I/O Paths for \\ Client Shielded Executions with Aurora }
 
@@ -52,8 +50,7 @@ Nowadays, users' sensitive data in edge computing devices (desktops, laptops, an
 To this end, we propose a novel architecture called \textsc{Aurora} to provide trusted I/O paths for enclave programs even in the presence of untrusted system software.
 Specifically, \textsc{Aurora} exploits two commercial-off-the-shelf features (System Management Mode, SMM and SGX) and establishes a secure channel between an enclave program and target device.
 Furthermore, we design and implement trusted paths for HID keyboard, serial port printer, hardware clocks, and USB mass storage, respectively. Leveraging these trusted paths, we protect real-world applications including OpenSSH client, OpenSSL server/client and SQLite database.
-Security and performance evaluations show that \textsc{Aurora} mitigates several kinds of I/O related attacks %. Performance evaluations demonstrate that \textsc{Aurora} 
-and introduces acceptable overheads.
+Security and performance evaluations show that \textsc{Aurora} mitigates several kinds of I/O related attacks and introduces acceptable overheads.
 
 \end{abstract}
 
@@ -659,7 +656,6 @@ Note that these are the worst-case overheads (because we have set \texttt{PRAGMA
 %We retrofitted KeePassX, an open source GUI password manager, to demonstrate Aurora's trusted input path. We ported the crypto process, kdbx password database and entry editing functions into an enclave program, so that the user's passwords are clear text only in the enclave. When the user adds a new entry, a GUI message box is popped up, and SMVisor is activated to intercept all keyboard inputs. %Since the GUI logic is untrusted, we do not allow the GUI to touch the real password character, rather, after the user releases a key, the enclave sends the \textit{signal} to GUI and the GUI displays an asteroid. 
 %After the user clicks the "OK" button, her username, password and other private information are then encrypted inside the enclave, and later restored into the database in encrypted format.
 
-
 \section{Related Work}
 Our technique was inspired by Scotch~\cite{DBLP:conf/raid/LeachZW17} which is the first work that combines SGX and SMM to audit VM resource usage. Its motivation differs from ours.
 Similar to \textsc{Aurora}'s SMVisor, previous research efforts such as HyperCheck~\cite{DBLP:conf/raid/WangSG10}, HyperSentry~\cite{DBLP:conf/ccs/AzabNWJZS10} and IOCheck~\cite{DBLP:conf/esorics/ZhangWLS14}, also employ a dedicated SMI handler to protect the integrity of the OS kernel, hypervisor or firmware, respectively.
@@ -691,16 +687,13 @@ BASTION-SGX~\cite{DBLP:conf/isca/PetersLVPK18} modifies the Bluetooth firmware a
 Pesos~\cite{DBLP:conf/eurosys/KrahnTVKBF18} builds a trusted path between enclaves and cloud-based storage, and supports policy-based object protection. Still, Pesos requires a programmable storage HDD named Kinetic Open Storage, while \textsc{Aurora} does not.
 %SGX-FS \cite{DBLP:conf/cloudcom/BurihabwaFMS18} hardened a user-level filesystem in an enclave, which is more generic than \textsc{Aurora}.
 
-
 \section{Conclusion}
 
 We present \textsc{Aurora}, a novel architecture which provides trusted I/O paths on client Intel SGX platforms. Based on \textsc{Aurora}, we design and implement several trusted I/O paths for SGX enclaves, including HID keyboard, serial-port printer, USB mass storage and the hardware clock. To the best of our knowledge, we are the first to provide these \emph{realistic} trusted I/O paths for enclaves. Our implementation demonstrates that \textsc{Aurora} is extensible and transparent with underlying commodity systems. Security and performance evaluations with real-world applications show that \textsc{Aurora} can mitigate several I/O related attacks and provide trusted I/O paths with low overhead.
 
-
 \section*{Acknowledgement}
 
 The authors would like to thank Kai Huang from Intel Corporation and Shweta Shinde from National University of Singapore for their generous help and constructive advices. The authors also thank the anonymous reviewers for their valuable comments that help improve the article.
-
 
 \bibliographystyle{IEEEtran}
 \bibliography{article}

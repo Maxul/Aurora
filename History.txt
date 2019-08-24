@@ -7,3 +7,6 @@ History:
 
 标题修改：
 SMM Supervisor -> SMVisor
+
+19.8.24 new IEEE template
+19.8.24 improvement according to review comments
