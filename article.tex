@@ -27,7 +27,7 @@
 
 \makeglossaries
 
-\title{Establishing Trusted I/O Paths for \\ Client Shielded Executions with Aurora}
+\title{Establishing Trusted I/O Paths for Client \\ Shielded Executions with Aurora}
 
 % Author(s) Name
 \author{Hongliang~Liang,~\IEEEmembership{Member,~IEEE,}
@@ -45,7 +45,7 @@
 
 \begin{abstract}
 
-Nowadays, users' sensitive data in edge computing devices (desktops, laptops, and tablets, etc.) is at high risk because they run applications on potentially compromised or malicious systems. To address this problem, hardware vendors propose Trusted Execution Environment (TEE). Particularly, Intel has released a new processor feature called Software Guard eXtension (SGX), and provisions shielded executions (i.e., enclaves) for security-sensitive computations. Regrettably, Intel SGX's design objectives omit trusted I/O paths. Without such guarantees, it is unlikely for an enclave to fulfill its security and privacy purposes because the source or sink of data may have been corrupted.
+Today users' private data in edge computing devices (desktops, laptops, and tablets, etc.) is at high risk because they run applications on potentially compromised or malicious systems. To address this problem, hardware vendors propose Trusted Execution Environment (TEE). Particularly, Intel has released a new processor feature called Software Guard eXtension (SGX), and provisions shielded executions (i.e., enclaves) for security-sensitive computations. Regrettably, Intel SGX's design objectives omit trusted I/O paths. Without such guarantees, it is unlikely for an enclave to fulfill its security and privacy purposes because the source or sink of data may have been corrupted.
 
 To this end, we propose a novel architecture called \textsc{Aurora} to provide trusted I/O paths for enclave programs even in the presence of untrusted system software.
 Specifically, \textsc{Aurora} exploits two commercial-off-the-shelf features (System Management Mode, SMM and SGX) and establishes a secure channel between an enclave program and target device.
@@ -83,7 +83,7 @@ Today's SGX ecosystem has not yet come up with an off-the-shelf solution to trus
 %% 所以，我们有了Aurora，专门提供可信IO服务的Aurora，它负责为enclave提供一条直达IO设备的可信路径。这个方法引入了一个可以执行特权指令、访问IO 设备的特殊“enclave”，即系统管理模式RAM。它是现有X86架构下的一块高特权飞地，同一模式下的飞地外代码、其他模式都无法访问和修改它。我们在SMRAM 和enclave间构建本地的可信路径，就能很好地给enclave提供绕过不可信区域的IO可信路径！
 On Intel platforms, we observe that 1) all peripheral I/O devices are connected with south-bridge to I/O Advanced Programmable Interrupt Controller (I/O APIC), 2) I/O interrupts can be rerouted to System Management Interrupt (SMI) via configuring I/O APIC and 3) the SMI handler is initialized by Unified Extensible Firmware Interface (UEFI) which contains kinds of device drivers; thus, we hold the insight that \textit{the SMI handler} is a perfect candidate to provide trusted I/O paths for security-critical applications.
 
-In this paper, we present \textsc{Aurora}, a novel architecture that safeguards I/O paths of SGX enclaves. To directly communicate with hardware devices without depending on the untrusted software, \textsc{Aurora} introduces System Management RAM (SMRAM) as a special enclave. SMRAM is a tamper-proof memory region used only in System Management Mode (SMM), much like the enclave region with SGX protection in user mode. \textsc{Aurora} delegates I/O requests from enclaves to the SMI handler protected inside SMRAM. We call this particular SMI handler \textit{SMVisor}. In hardware, SMVisor is safe from any corruptions by other privileged software (including OS and hypervisor). Therefore, Intel SGX enclaves can safely use I/O devices while remaining \textit{transparent} to the underlying OS.
+In this paper, we present \textsc{Aurora}, a novel architecture that safeguards I/O paths of SGX enclaves. To directly communicate with hardware devices without depending on the untrusted software, \textsc{Aurora} introduces System Management RAM (SMRAM) as a special enclave. SMRAM is a tamper-proof memory region used only in System Management Mode (SMM), much like the enclave region with SGX protection in user mode. \textsc{Aurora} delegates I/O requests from enclaves to the SMI handler protected inside SMRAM. We call this particular SMI handler \textit{SMVisor}. In hardware, SMVisor is safe from any corruptions by other privileged software. Therefore, Intel SGX enclaves can safely use I/O devices while remaining \textit{transparent} to the underlying OS and hypervisor.
 
 %% 我们的贡献点有：Aurora是个全新的系统服务框架；四款全新的服务；实际的应用评估证明其可用性。
 To summarize, this paper makes these contributions:
@@ -131,7 +131,7 @@ Although SGX provides user-space strong isolation for program end-points (i.e. e
 
 The main difference between these two types is that \textit{data-provider/-consumer} is either the sink or the source of data. This type of trusted path must handle data in plaintext, which requires careful isolation or confidential protection. The \textit{data-storage/-transmitter} type acts as a medium for data at rest or in transition. It focuses on the freshness and integrity of data.
 
-\subsection{Threat Model}
+\subsection{Threat Model and Assumptions}
 We consider an adversary who can compromise the system via software attacks. He can directly attack enclave interfaces visible to the OS, and actively reconfigure any devices (e.g., modify MMIO region, or change the operating mode of a device) and perform arbitrary operations (e.g., trigger interrupts, issue DMA write requests) using any I/O commands.
 
 \textsc{Aurora} requires a modern Intel platform with SGX and TPM support. We assume the hardware and SMRAM firmware (the microkernel we implement) of the host machine is trusted. We do not trust the UEFI drivers but verify whether they operate following their specifications, or perform unintended operations: e.g., intercept bus traffic, or write to an address that is not specified in DMA commands. Our assumptions  reduce the TCB on the target host as modern commodity system usually contains a large software stacks (e.g., UEFI, possibly hypervisor, kernel and other applications) when dealing with I/O devices.
@@ -161,7 +161,7 @@ Establishing a trusted path in \textsc{Aurora} consists of the following three s
 
 \begin{figure}
 	\centering
-	\includegraphics[width=0.5\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
+	\includegraphics[width=0.49\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
 	\caption{The workflow of a trusted I/O path in \textsc{Aurora}. %The white areas denote the TCB.
 	1) An output request is triggered by an enclave as an exception:
 \textcircled{\scriptsize{1}} The user logic in an enclave issues an output request by invoking  Tlibaurora's APIs;
@@ -193,6 +193,8 @@ The data plane of an enclave is protected by advanced encryption schemes acceler
 \iffalse
 
 \subsection{Workflow}\label{workflow}
+
+To help understand the workflow of a trusted path in \textsc{Aurora}, we break down the process of the output path and input path respectively into sequential phases, as illustrated in left and right part of \autoref{fig:workflow}.
 
 An output request is triggered by an enclave as an exception, as depicted as follows:\\
 %\par
@@ -317,11 +319,11 @@ Shared print services are very common today, by which colleagues in a unit or st
 When an enclave requests the trusted printer service, it encrypts the output packet and sends the encrypted packet to SMVisor.  SMVisor receives the packet and decrypts it to plaintext packet. As the packets are usually held with printer-specific format, SMVisor issues the corresponding serial port driver and adds this job into its task queue. Afterwards, SMVisor returns the status code from the printer devices to the enclave end-point.
 
 \subsection{Trusted Hardware Clock}\label{time service}
-The integrity and non-forgeability of the clock value is much more vital. In this section, we describe how to extend \textsc{Aurora} for trusted, high-resolution, absolute and attack-aware clock.
+The integrity and non-forgeability of the clock value is much more vital. In this section, we describe how to extend \textsc{Aurora} for trusted, absolute, high-resolution and attack-aware clock.
 
-\textbf{Multiple Sources.}
-%% 多源头获取时间，适应不同需求
-\textsc{Aurora} uses multiple clock sources available on x86 platforms, such as programmable interval timer (PIT) and advanced configuration and power interface/power management (ACPI/PM) timer. To estimate the latency of obtaining time from hardware and adjust their values, SMVisor references invariant time stamp counter (TSC) via \textit{RDTSCP} instruction. The invariant TSC ensures that the duration of each clock tick is uniform (at the frequency relative to the crystal clock frequency of the processor core).
+%\textbf{Diverse Sources.}
+%%% 多源头获取时间，适应不同需求
+%\textsc{Aurora} uses multiple clock sources available on x86 platforms, such as programmable interval timer (PIT) and advanced configuration and power interface/power management (ACPI/PM) timer. 
 
 \textbf{Absolute Value.}
 %% 绝对时间来自RTC驱动
@@ -329,11 +331,11 @@ We use Real-Time Clock (RTC) to provide the absolute wall-clock time (i.e. epoch
 
 \textbf{High Resolution.}
 %% 根据时钟频率和差值计算时间精度
-When a time value with high resolution (e.g. micro-second) is required, \textsc{Aurora} uses the invariant TSC and High Precision Event Timer (HPET) to satisfy the need. For instance, \textsc{Aurora} uses the following formulae to compute the \textit{tv\_usec} value in \textit{timeval} data structure: {$tv\_usec = (HPET\_value/ HPET\_Hz) / 1,000,000$;} where $(HPET\_value / HPET\_Hz)$ computes the absolute time in micro-seconds.
+When a time value with high resolution (e.g. micro-second) is required, \textsc{Aurora} uses invariant time stamp counter (TSC) and High Precision Event Timer (HPET). For instance, \textsc{Aurora} uses the following formulae to compute the \textit{tv\_usec} value in \textit{timeval} data structure: {$tv\_usec = (HPET\_value/ HPET\_Hz) / 1,000,000$;} where $(HPET\_value / HPET\_Hz)$ computes the absolute time in micro-seconds. SMVisor references invariant TSC to estimate the latency of hardware response and adjust the value. Invariant TSC ensures that the duration of each clock tick is uniform. 
 
 \textbf{Attack-Awareness.}
 %% 如何避免时钟攻击
-Though the hardware clocks can be controlled and modified by the malicious OS, diverse timers in Aurora offer enclaves the ability to validate the credibility of time values. Tlibaurora records last values read from all hardware clocks and obtains current values to calculate their differences respectively, and then uses clock frequencies to compute the actual elapsed time. When any of the measured time violates the monotonic rule, we assume a time attack.
+Though hardware clocks can be controlled and modified by the malicious OS, diverse timers in Aurora offer enclaves the ability to validate the credibility of time values. Tlibaurora records last values read from all hardware clocks and obtains current values to calculate their differences respectively, and then uses clock frequencies to compute the actual elapsed time. When any of the measured time violates the monotonic rule, we assume a time attack.
 
 For the case where the hardware clocks are altered in a consistent way, that is, all the timers are altered in the same offset, we propose a novel algorithm to detect such an attack. We use a dedicated counting thread \cite{DBLP:conf/dimva/SchwarzWGMM17} guarded inside an enclave occupying a logical thread on the same CPU core. Such a sibling thread will block the possibility of side-channel attacks when hyper-threading is active \cite{DBLP:conf/sp/ChenWCCZWLL18}. The counting thread provides $dT$ and the difference of hardware timers provides $dt$, we use first-order derivative $dt/dT$ to detect the possible time attack. Currently, we set the confidence interval to 0.05, which denotes the possible altering in the timers' rising slope. If the slope changes much, we assume an attack.
 
@@ -431,6 +433,22 @@ We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers
 %% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
 Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as a baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such a situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
 
+\subsection{Security Effectiveness}\label{security}
+We evaluate \textsc{Aurora}'s reliability with several security tests.
+\\
+\textbf{Keylogging Attack.}
+To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, a kernel-level rootkit keylogger\footnote{https://github.com/arunpn123/keylogger}, and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
+\\
+\textbf{Output Corruption Attack.}
+We leveraged a DMA-based NIC device to launch output corruption attack when using Aurora's trusted serial printer service. Since  SMRAM and EPC RAM are strongly isolated by architectural protections, only meaningless content (0xFF) is obtained. No secrets are leaked. We then conducted another DMA attack to corrupt SMM drivers outside of SMRAM. SMVisor detected its integrity tampered  and rejected subsequent requests, then notified the enclave application. Moreover, we conducted another DMA attack to corrupt the content of shared memory of the secure session. Both SMVisor and Tlibaurora can verify the broken MAC and restart a new session.
+\\
+\textbf{Time Deception Attack.}
+To evaluate the trusted clock, we intentionally modified the RTC when an enclave issued a request for trusted clock. Tlibaurora detected the attacks successfully and indicated a failure. For instance, \texttt{gettimeofday()} returns -1 and sets the global variable \textit{errno} appropriately. Existing C library specification does not have a flag indicating time attacks, the enclave logic may keep requesting until obtaining a valid time value. We support failure handling in Tlibaurora to help enclaves deal with such situations.
+\\
+\textbf{Storage Deception Attack.}
+We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis.
+
+
 \begin{table}[t]
 	\centering
 	\caption{Serial-port benchmark comparison between Linux and \textsc{Aurora}.}
@@ -466,40 +484,7 @@ Specifically, we ran two threads: one thread (T1) running Pi number calculation,
 	\end{tabular}
 \end{table}
 
-\subsection{Security Effectiveness}\label{security}
-We evaluate \textsc{Aurora}'s reliability with several security tests.
-\\
-\textbf{Keylogging Attack.}
-To evaluate the effectiveness of \textsc{Aurora}'s trusted input path, we deployed multiple spyware to get a user's inputs under trusted input mode, including a stealthy root keylogger\footnote{https://github.com/vim2meta/keylogger}, a rootless X11-based keylogger ixkeylog\footnote{https://github.com/dorneanu/ixkeylog}, a kernel-level rootkit keylogger\footnote{https://github.com/arunpn123/keylogger}, and a remote keylogger\footnote{https://github.com/EinBaum/Totally-Not-A-Virus}. None of them can obtain the user's inputs.
-\\
-\textbf{Output Corruption Attack.}
-We leveraged a DMA-based NIC device to launch output corruption attack when using Aurora's trusted serial printer service. Since  SMRAM and EPC RAM are strongly isolated by architectural protections, only meaningless content (0xFF) is obtained. No secrets are leaked. We then conducted another DMA attack to corrupt SMM drivers outside of SMRAM. SMVisor detected its integrity tampered  and rejected subsequent requests, then notified the enclave application. Moreover, we conducted another DMA attack to corrupt the content of shared memory of the secure session. Both SMVisor and Tlibaurora can verify the broken MAC and restart a new session.
-\\
-\textbf{Time Deception Attack.}
-To evaluate the trusted clock, we intentionally modified the RTC when an enclave issued a request for trusted clock. Tlibaurora detected the attacks successfully and indicated a failure. For instance, \texttt{gettimeofday()} returns -1 and sets the global variable \textit{errno} appropriately. Existing C library specification does not have a flag indicating time attacks, the enclave logic may keep requesting until obtaining a valid time value. We support failure handling in Tlibaurora to help enclaves deal with such situations.
-\\
-\textbf{Storage Deception Attack.}
-We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis.
-
 \iftrue
-
-\begin{table*}[t]
-	\centering
-	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME), monotonic counter supported by Byzantine Fault Tolerance (BFT) protocol.}
-	\label{table:timeservice}
-	\small
-	\begin{tabular}{lllcrccr}
-		\toprule
-		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
-		\midrule
-		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
-		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
-		OS Kernel & OCALL & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
-		Distributed Network & BFT & N/A & N/A & 1--2ms & medium & trusted & ROTE~\cite{DBLP:conf/uss/MateticAKDSGJC17} \\
-		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
-		\bottomrule
-	\end{tabular}
-\end{table*}
 
 \begin{table}
 	\centering
@@ -525,6 +510,24 @@ We modified the kernel driver of SCSI device and randomly dropped several disk I
 	\end{tabular}
 \end{table}
 
+\begin{table*}[t]
+	\centering
+	\caption{Comparison of existing clock services that can be used for SGX enclaves. Clock services include network time protocol (NTP), precision time protocol (PTP), and the platform software (PSW) supported by Intel management engine (ME), monotonic counter supported by Byzantine Fault Tolerance (BFT) protocol.}
+	\label{table:timeservice}
+	\small
+	\begin{tabular}{lllcrccr}
+		\toprule
+		\textbf{Clock Provider} & \textbf{Approach} & \textbf{Type} & \textbf{Resolution} & \textbf{Request Cost} & \textbf{Latency} & \textbf{Security} & \textbf{Use Cases} \\
+		\midrule
+		Remote Clock & NTP/PTP & absolute & 1s & $>$100ms & high & trusted & Town Crier~\cite{DBLP:conf/ccs/ZhangCCJS16} \\
+		Intel ME & PSW & relative & 1s & 10.3ms & medium & trusted & SGX-Tor~\cite{DBLP:conf/nsdi/KimHHKH17} \\
+		OS Kernel & OCALL & absolute & 1ns & 6us & low & untrusted & Panoply~\cite{shinde_panoply:_2017} \\
+		Distributed Network & BFT & N/A & N/A & 1--2ms & medium & trusted & ROTE~\cite{DBLP:conf/uss/MateticAKDSGJC17} \\
+		Hardware Clock & \textit{smcall} & absolute & 1ns & 69us & low & trusted & Aurora-OpenSSL~\ref{openssl} \\
+		\bottomrule
+	\end{tabular}
+\end{table*}
+
 \fi
 
 % 测试结果说明Aurora方法下的串口响应速度更快，和Linux原生方法频繁的上下文代价有关
@@ -536,7 +539,6 @@ To compare the serial output performance between native Linux and \textsc{Aurora
 \subsection{Trusted USB Storage Benchmark}
 
 To compare the overhead introduced when applying \textsc{Aurora}'s trusted I/O path on USB storage devices, we wrote variable sizes of contents to a USB storage device on native Linux system as the baseline, by using \texttt{dd} program with options \texttt{fsync} and \texttt{direct}. To avoid the side-effect of any buffer mechanism, we use Linux raw device to mount and initialize the USB device. % to bypass any file system interference. We then measure the overheads of using Aurora's SMVisor for MAC verification added to each block request in the request and response path. We did not use any encryption in this experiment. 
-
 The throughput results are shown in \autoref{table:dd} where the size of each block is set to 4KB. \textsc{Aurora} achieves approximately 90\% of the baseline throughput when writing 1GB to the device. The major overheads are contributed by SMM/Protected mode transitions and cryptographic computations on each block.
 
 \subsection{Trusted Clock Benchmark}\label{time_bench}
