@@ -88,7 +88,7 @@ In this paper, we present \textsc{Aurora}, a novel architecture that safeguards 
 %% 我们的贡献点有：Aurora是个全新的系统服务框架；四款全新的服务；实际的应用评估证明其可用性。
 To summarize, this paper makes these contributions:
 \begin{enumerate}[]
-\item The notion of two types of trusted I/O paths: data-provider/-consumer and data-storage/-transmitter (\autoref{types}), for security-sensitive applications (enclave programs).
+\item The notion of two types of trusted I/O paths: data-provider/-consumer path and data-storage/-transmitter (\autoref{types}) path, for security-sensitive applications (enclave programs).
 \item A novel architecture named \textsc{Aurora} (\autoref{arch}) leveraging two hardware features of Intel processors (SMM and SGX) to provide enclaves trusted paths transparent to untrusted OSes/HVs with a minimal trusted computing base (\autoref{codebase}).
 \item Design and implementation of four types of trusted I/O paths (\autoref{tpaths}): keyboard, printer, clock, and storage, based on \textsc{Aurora}.  To the best of our knowledge, we are the first to provide these \emph{realistic} trusted I/O paths for SGX enclaves on the client side.
 \item Three case studies: OpenSSH client, OpenSSL client, and SQLite database using trusted I/O paths provided by \textsc{Aurora} (\autoref{casestudy}). Experimental results show that \textsc{Aurora} can protect them from typical I/O related attacks (\autoref{security}) with acceptable performance overhead (\autoref{performance}).
@@ -129,7 +129,7 @@ Although SGX provides user-space strong isolation for program end-points (i.e. e
 
 \end{enumerate}
 
-The main difference between these two types is that \textit{data-provider/-consumer} is either the sink or the source of data. This type of trusted path must handle data in plaintext, which requires careful isolation or confidential protection. The \textit{data-storage/-transmitter} type acts as a medium for data at rest or in transition. It focuses on the freshness and integrity of data.
+The main difference between these two types is that \textit{data-provider/-consumer} is either the sink or the source of data and must handle data in plain-text, which requires careful isolation or confidential protection; Whereas the \textit{data-storage/-transmitter} type acts as a medium for data at rest or in transition. It focuses on the freshness and integrity of data.
 
 \subsection{Threat Model and Assumptions}
 We consider an adversary who can compromise the system via software attacks. He can directly attack enclave interfaces visible to the OS, and actively reconfigure any devices (e.g., modify MMIO region, or change the operating mode of a device) and perform arbitrary operations (e.g., trigger interrupts, issue DMA write requests) using any I/O commands.
@@ -163,7 +163,7 @@ Establishing a trusted path in \textsc{Aurora} consists of the following three s
 	\centering
 	\includegraphics[width=0.49\textwidth]{figures/workflow.pdf} %height=0.25\textheight,
 	\caption{The workflow of a trusted I/O path in \textsc{Aurora}. %The white areas denote the TCB.
-	1) An output request is triggered by an enclave as an exception:
+	1) An \textbf{output} request is triggered by an enclave as an exception:
 \textcircled{\scriptsize{1}} The user logic in an enclave issues an output request by invoking  Tlibaurora's APIs;
 \textcircled{\scriptsize{2}} Tlibaurora marshals and encrypts the request's arguments, and invokes Ulibaurora outside the enclave to relay the request;
 \textcircled{\scriptsize{3}} Ulibaurora \emph{ioctls} the ashmd module to trigger an \textit{smcall};
@@ -171,7 +171,7 @@ Establishing a trusted path in \textsc{Aurora} consists of the following three s
 \textcircled{\scriptsize{5}} SMVisor decrypts the request and invokes the driver;
 \textcircled{\scriptsize{6}} The driver processes output data in PCI space or MMIO buffer;
 \textcircled{\scriptsize{7}} The driver returns a result code to SMVisor. In the end, SMVisor executes \textit{RSM} to return to protected mode. 
-	2) An input request from an enclave causes a device interrupt:
+	2) An \textbf{input} request from an enclave causes a device interrupt:
 \textcircled{\scriptsize{1}} The target device triggers an interrupt, and the control flow is rerouted to SMVisor which has the interrupt handler;
 \textcircled{\scriptsize{2}} SMVisor invokes the driver to handle the input request;
 \textcircled{\scriptsize{3}} The driver gets the raw input data and sends it to SMVisor;
@@ -308,9 +308,10 @@ Trusted input ensures that third-party software on the same computer has no acce
 When an enclave issues a trusted input request, SMVisor routes the keyboard interrupt (IRQ 1 by default) to SMI. All of the subsequent keyboard scan codes are then cached inside SMRAM. We call this case \emph{trusted input mode}. After an \emph{enter} key is hit and released, SMVisor recovers the I/O APIC redirection table and exits trusted input mode. Finally, SMVisor encrypts the input and sends it to the secure channel. The desired enclave obtains it from the channel and decrypt it.
 
 \textbf{User Verification.}
-Phishing attacks, where an adversary exploits social engineering tricks to allure a user to leak her privacy data, are a threat to trusted input. For example, a malware might present a fake login interface that prompts a user to enter her password.
+%Phishing attacks, where an adversary exploits social engineering tricks to allure a user to leak her privacy data, are a threat to trusted input. For example, a malware might present a fake login interface that prompts a user to enter her password.
+Attackers can use keyloggers to steal passwords or credit card information. Most keyloggers are not stopped by HTTPS encryption which only protects data in transit between computers. For example, they are frequently implemented as rootkits that subvert the operating system kernel to gain unauthorized access to the hardware. 
 To mitigate this threat, we leverage the PC speaker to indicate that the trusted path has been established.
-When the system first boots, the network is disabled by the SMVisor, and we assume that the loaded kernel is clean due to TPM's measure boot. \textsc{Aurora} asks the user to store a short, arbitrary MIDI-format melody (around 5 seconds) inside SMRAM via a config enclave, so that every time when a trusted path is set up, the PC speaker will play the melody, and then the network is enabled by the SMVisor. Since the melody is a pre-shared secret only known by SMVisor and the user, it is impossible for the adversary to learn and mimic this process.
+When the system first boots, the network is disabled by the SMVisor, and we assume that the loaded kernel is clean due to TPM's measure boot. \textsc{Aurora} asks a user to store a short, arbitrary MIDI-format melody (around 5 seconds) inside SMRAM via a configure enclave, so that every time when a trusted path is set up, the PC speaker will play the melody, and then the network is enabled by the SMVisor. Since the melody is a pre-shared secret only known by SMVisor and the user, it is impossible for the attackers to learn and mimic this process.
 % Tlibaurora first generates a random integer $N$ in the interval of [1, 10], and displays the integer number in the screen as a captcha. Tlibaurora sends $N$ to SMVisor. SMVisor blinks the \textit{Caps Lock} LED light for exactly $N$ times. Since the captcha is generated with noises inside the enclave, it is hard for the adversary to mimic the process. %Before the enclave application displays the prompt that awaits the user to enter her password, a controlled computer might have displayed the same content and user directly inputs the secrecy without waiting for the computer to enter trusted input mode. 
 
 \subsection{Trusted Serial Printer Output}\label{output_service}
@@ -339,10 +340,10 @@ Though hardware clocks can be controlled and modified by the malicious OS, diver
 
 For the case where the hardware clocks are altered in a consistent way, that is, all the timers are altered in the same offset, we propose a novel algorithm to detect such an attack. We use a dedicated counting thread \cite{DBLP:conf/dimva/SchwarzWGMM17} guarded inside an enclave occupying a logical thread on the same CPU core. Such a sibling thread will block the possibility of side-channel attacks when hyper-threading is active \cite{DBLP:conf/sp/ChenWCCZWLL18}. The counting thread provides $dT$ and the difference of hardware timers provides $dt$, we use first-order derivative $dt/dT$ to detect the possible time attack. Currently, we set the confidence interval to 0.05, which denotes the possible altering in the timers' rising slope. If the slope changes much, we assume an attack.
 
-Aurora's trusted hardware clock is immune to the TOCTOU attack because it leverages SMM which guarantees that the operation of check and use are atomically performed.
+Aurora's trusted hardware clock is immune to the TOCTOU attack because it leverages SMM which guarantees that the operations of check and use are atomically performed.
 
 \subsection{Trusted USB Storage}\label{storage_service}
-Storage software usually supports block devices and file system. A compromised OS may silently discard data written by the application or return fabricated data during a read operation. It is a serious issue when secure data storage is  necessary for ensuring correct operation (e.g., secure logging, APT monitoring and compliance). We extend \textsc{Aurora} to support secure USB massive storage devices. Note that \textsc{Aurora}'s approach is also suitable and easy to support for other storage systems such as SATA HDD, NVMe SSD, etc.
+Storage software usually supports block devices and file system. A compromised OS may silently discard data written by the application or return fabricated data during a read operation. It is a serious issue when secure data storage is  necessary for ensuring correct operation (e.g., secure logging, APT monitoring and compliance). We extend \textsc{Aurora} to support secure USB massive storage devices as an example. Note that we believe that \textsc{Aurora}'s approach is also suitable to support for other storage systems such as SATA HDD, NVMe SSD, etc.
 
 % 对于不关注隐私的可信路径，我们主要是利用中断来判断读写的请求。因此每次都显式调用fsync；另外，最大的问题在于如何找到DMA高速缓存区域。
 %\textbf{Basic USB Workflow.}
@@ -546,7 +547,7 @@ The throughput results are shown in \autoref{table:dd} where the size of each bl
 %It is important to quantify how much time is required to attain a trusted clock service since the potential service latency impacts the freshness of message and indicates the response speed. 
 For this experiment, we measured the complete trusted clock procedure for 1,000 times and used the average value. Table \ref{table:breaktime} shows the time cost for each step in a trusted clock path. We can see that the clock service takes most of the time. This is because 1) the RTC driver has to read clock value twice to check if the clock is updating its time data; 2) The RTC involves several \texttt{INS} instructions to read each field of a calendar time, and costs 14us to obtain a complete wall-clock time in one request; 3) The other 4 timers cost roughly 10us in sum. The total  time cost (84us) satisfies the requirement of real-world trusted timestamps.
 
-For comparison, we measured the performance of other clock providers. The results are shown in \autoref{table:timeservice}. Due to the fact that there are no input dependent branches in the secure channel (the channel simply transfers the I/O packets), we argue that our secure session is safe from side-channel attacks such as the timing attacks. 
+For comparison, we measured the performance of other clock providers. The results are shown in \autoref{table:timeservice}. %Due to the fact that there are no input dependent branches in the secure channel (the channel simply transfers the I/O packets), we argue that our secure session is safe from side-channel attacks such as the timing attacks. 
 Among existing approaches, \textsc{Aurora} outperforms remote clock (the 2nd row) and Intel's reference clock (the 3rd row) by introducing very low latency, while achieving the same resolution (nanosecond-level) as OS services (the 4th row). 
 %Note that any approach can be arbitrarily delayed in that the untrusted OS is in charge of the enclave thread scheduling. We treat intentionally time delay as a form of Denial-of-Service attack.
 
@@ -585,7 +586,7 @@ SSL/TLS protocols are in widespread use in web browsing, email, instant messagin
 An SSL/TLS session starts with SSL/TLS handshake protocol, including authentication, key exchange, etc. The procedures rely on system date and time. The SSL/TLS server needs to provide a certificate with a timestamp indicating the expiration time, and the SSL/TLS client needs to verify this certificate. Most of all, both parties require a reliable time source to detect possible timeout. For instance, both \emph{ClientHello} and \emph{ServerHello} messages use the system time to prevent replay attacks. If the time is emulated by an untrusted source, it may compromise the security of OpenSSL sessions.
 
 One of the in-enclave SSL/TLS projects is SGX-OpenSSL\footnote{https://github.com/sparkly9399/SGX-OpenSSL} from SGX-Tor project~\cite{DBLP:conf/nsdi/KimHHKH17}. It does not trust the system storage, therefore its server side creates the certificate inside the enclave each time it receives a new connection request from the client side. We enhanced the TLS handshake by using \textsc{Aurora}'s trusted clock. Specifically, we replaced time-related OCALLs in the original project with \textsc{Aurora}'s libaurora. %The new architecture of TLS handshake is demonstrated in \autoref{figure:openssl}.
-We measured the time cost of certification generation at server side and TLS handshake at client side for 10,000 runs and take the average value. We also measured the native SGX-OpenSSL using original OCALLs. As shown in \autoref{table:openssl}, in our LAN setting, Aurora-OpenSSL introduced about 32\% latency in certificate generation and 21\% in the TLS handshaking because both of them use \textsc{Aurora}'s trusted clock. We anticipate the overhead ratio to decrease in a WAN environment because of the larger delays of a geographically distributed public network.
+We measured the time cost of certification generation at server side and TLS handshake at client side for 10,000 runs and take the average value. We also measured the native SGX-OpenSSL using original OCALLs. As shown in \autoref{table:openssl}, in our LAN setting, Aurora-OpenSSL introduced about 32\% latency in certificate generation and 21\% in the TLS handshaking because both of them use \textsc{Aurora}'s trusted clock. We anticipate the overhead ratio to decrease in a WAN environment because the delays of a geographically distributed public network is larger than our LAN setting.
 
 %\subsection{Secure Online E-Banking}
 %
@@ -665,9 +666,9 @@ Finally, %to directly measure the overhead introduced by \textsc{Aurora}'s infra
 we set the synchronize flag to \texttt{FULL} to avoid the uncertainty of I/O caching.
 
 We evaluated the enhanced SQLite performance by running standardized TPC-H benchmark\footnote{http://www.tpc.org/tpch/} over a large database. % (around 1.3GB).
-We make minor changes to these benchmark queries in order to make them possible to be executed in SQLite. Unfortunately, not all queries can be executed due to the partial porting of the original project. These queries include \textit{select from, order by, group by}.
+We make minor changes to these benchmark queries in order to make them possible to be executed in SQLite. 
 %In our experiment, the native insertion transactions for 1000 times cost 17.3 seconds while the ones with \textsc{Aurora}'s trusted path cost 20.5 seconds. About 18\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
-\autoref{table:tpch} shows the completed queries and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
+\autoref{table:tpch} shows the completed queries\footnote{Note that several queries, i.e., \textit{select from, order by, group by}, cannot be executed due to our partial porting of the original project.} and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
 Note that these are the worst-case overheads (because we have set \texttt{PRAGMA synchronous} to \texttt{FULL}) as almost all databases have their own optimized caching mechanisms for better performance.
 
 %\subsection{Secure Password Manager}
