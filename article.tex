@@ -1,4 +1,4 @@
-\documentclass[journal,twocolumn,letterpaper,10pt]{IEEEtran}
+\documentclass[journal,twocolumn,10pt]{IEEEtran}
 \pagestyle{plain}
 
 \usepackage[acronym]{glossaries}
@@ -14,7 +14,7 @@
 \usepackage[bottom]{footmisc}
 \usepackage{graphicx}
 \usepackage[tight,footnotesize]{subfigure}
-\usepackage{booktabs} % For formal tables
+\usepackage{booktabs}
 \usepackage[colorlinks, linkcolor=blue,anchorcolor=black,citecolor=blue]{hyperref}
 
 \renewcommand{\sectionautorefname}{\S}
@@ -27,7 +27,7 @@
 
 \makeglossaries
 
-\title{Establishing Trusted I/O Paths for Client \\ Shielded Executions with Aurora}
+\title{Establishing Trusted I/O Paths for \\ SGX Client Systems with Aurora}
 
 % Author(s) Name
 \author{Hongliang~Liang,~\IEEEmembership{Member,~IEEE,}
@@ -135,7 +135,7 @@ The main difference between these two types is that \textit{data-provider/-consu
 We consider an adversary who can compromise the system via software attacks. He can directly attack enclave interfaces visible to the OS, and actively reconfigure any devices (e.g., modify MMIO region, or change the operating mode of a device) and perform arbitrary operations (e.g., trigger interrupts, issue DMA write requests) using any I/O commands.
 
 \textsc{Aurora} requires a modern Intel platform with SGX and TPM support. We assume the hardware and SMRAM firmware (the microkernel we implement) of the host machine is trusted. We do not trust the UEFI drivers but verify whether they operate following their specifications, or perform unintended operations: e.g., intercept bus traffic, or write to an address that is not specified in DMA commands. Our assumptions  reduce the TCB on the target host as modern commodity system usually contains a large software stacks (e.g., UEFI, possibly hypervisor, kernel and other applications) when dealing with I/O devices.
-Physical attacks on devices, side-channel attacks~\cite{chen2019sgxpectre, ridl}, information leakage (I/O size and request/response frequency) and denial-of-service attacks are not considered. The adversary cannot access the physical machine and modify its hardware setup. %we adopt side-channel free cryptographic algorithms and apply an oblivious packet transferring technique (\autoref{enhancement}).
+Physical attacks on devices, side-channel attacks~\cite{chen2019sgxpectre, ridl}, information leakage (I/O size and request/response frequency) and denial-of-service attacks to Aurora's framework are not considered. The adversary cannot access the physical machine and modify its hardware setup. %we adopt side-channel free cryptographic algorithms and apply an oblivious packet transferring technique (\autoref{enhancement}).
 
 
 \section{Design}
@@ -343,7 +343,7 @@ For the case where the hardware clocks are altered in a consistent way, that is,
 Aurora's trusted hardware clock is immune to the TOCTOU attack because it leverages SMM which guarantees that the operations of check and use are atomically performed.
 
 \subsection{Trusted USB Storage}\label{storage_service}
-Storage software usually supports block devices and file system. A compromised OS may silently discard data written by the application or return fabricated data during a read operation. It is a serious issue when secure data storage is  necessary for ensuring correct operation (e.g., secure logging, APT monitoring and compliance). We extend \textsc{Aurora} to support secure USB massive storage devices as an example. Note that we believe that \textsc{Aurora}'s approach is also suitable to support for other storage systems such as SATA HDD, NVMe SSD, etc.
+Storage software usually supports block devices and file system. A compromised OS may silently discard data written by the application or return fabricated data during a read operation. It is a serious issue when secure data storage is  necessary for ensuring correct operation (e.g., secure logging, APT monitoring and compliance). We extend \textsc{Aurora} to support secure USB massive storage devices as an example. We believe that \textsc{Aurora}'s approach is suitable to support other storage systems such as SATA HDD, NVMe SSD, etc.
 
 % 对于不关注隐私的可信路径，我们主要是利用中断来判断读写的请求。因此每次都显式调用fsync；另外，最大的问题在于如何找到DMA高速缓存区域。
 %\textbf{Basic USB Workflow.}
@@ -434,7 +434,7 @@ We select  pi\_css5\footnote{http://myownlittleworld.com/miscellaneous/computers
 %% 太高的请求我们认为不合理；OS有权拒绝SMI请求，以此降低性能影响
 Specifically, we ran two threads: one thread (T1) running Pi number calculation, the other thread (T2) requesting the ashmd module to trigger an SMI in a given interval. Firstly, we ran T1 without the interference of T2 and took the time cost as a baseline. Then we started T2 to see the slowdown of T1. From \autoref{table:pi}, we observe that when the interval decreases, the overhead increases. The worst case of overhead is around 21\%, where \textit{smcalls} are requested too frequently. Such a situation is rare in real world applications because an enclave has to execute its own logic. We observe that intensive requests may impact the time-sensitive tasks on the same system. Since \textit{smcalls} are forwarded by ashmd module, it can use a threshold to block a malicious enclave from abusing. In our current setting, we allow an enclave to request up 10,000 times per second, which introduces about 11\% overhead to the system.
 
-\subsection{Security Effectiveness}\label{security}
+\subsection{Security Evaluation}\label{security}
 We evaluate \textsc{Aurora}'s reliability with several security tests.
 \\
 \textbf{Keylogging Attack.}
@@ -447,7 +447,7 @@ We leveraged a DMA-based NIC device to launch output corruption attack when usin
 To evaluate the trusted clock, we intentionally modified the RTC when an enclave issued a request for trusted clock. Tlibaurora detected the attacks successfully and indicated a failure. For instance, \texttt{gettimeofday()} returns -1 and sets the global variable \textit{errno} appropriately. Existing C library specification does not have a flag indicating time attacks, the enclave logic may keep requesting until obtaining a valid time value. We support failure handling in Tlibaurora to help enclaves deal with such situations.
 \\
 \textbf{Storage Deception Attack.}
-We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis.
+We modified the kernel driver of SCSI device and randomly dropped several disk I/O requests intentionally.  SMVisor detected such accidental conditions and notified the Tlibaurora of corresponding enclave. In our current setting, the Tlibaurora will automatically try issuing the lost I/O requests three times so as to avoid storage failure. In our experiments, the enclave finally received the attack warning from the Tlibaurora and logged these events for further forensic analysis. Note that denial-of-service to Aurora's kernel module is not considered in this work.
 
 
 \begin{table}[t]
@@ -586,7 +586,7 @@ SSL/TLS protocols are in widespread use in web browsing, email, instant messagin
 An SSL/TLS session starts with SSL/TLS handshake protocol, including authentication, key exchange, etc. The procedures rely on system date and time. The SSL/TLS server needs to provide a certificate with a timestamp indicating the expiration time, and the SSL/TLS client needs to verify this certificate. Most of all, both parties require a reliable time source to detect possible timeout. For instance, both \emph{ClientHello} and \emph{ServerHello} messages use the system time to prevent replay attacks. If the time is emulated by an untrusted source, it may compromise the security of OpenSSL sessions.
 
 One of the in-enclave SSL/TLS projects is SGX-OpenSSL\footnote{https://github.com/sparkly9399/SGX-OpenSSL} from SGX-Tor project~\cite{DBLP:conf/nsdi/KimHHKH17}. It does not trust the system storage, therefore its server side creates the certificate inside the enclave each time it receives a new connection request from the client side. We enhanced the TLS handshake by using \textsc{Aurora}'s trusted clock. Specifically, we replaced time-related OCALLs in the original project with \textsc{Aurora}'s libaurora. %The new architecture of TLS handshake is demonstrated in \autoref{figure:openssl}.
-We measured the time cost of certification generation at server side and TLS handshake at client side for 10,000 runs and take the average value. We also measured the native SGX-OpenSSL using original OCALLs. As shown in \autoref{table:openssl}, in our LAN setting, Aurora-OpenSSL introduced about 32\% latency in certificate generation and 21\% in the TLS handshaking because both of them use \textsc{Aurora}'s trusted clock. We anticipate the overhead ratio to decrease in a WAN environment because the delays of a geographically distributed public network is larger than our LAN setting.
+We measured the time cost of certification generation at server side and TLS handshake at client side for 10,000 runs and take the average value. We also measured the native SGX-OpenSSL using original OCALLs. As shown in \autoref{table:openssl}, in our LAN setting, Aurora-OpenSSL introduced about 32\% latency in certificate generation and 21\% in the TLS handshaking because both of them use \textsc{Aurora}'s trusted clock. We anticipate the overhead ratio to decrease in a WAN environment, because the delay of a geographically distributed public network should be larger than our LAN setting.
 
 %\subsection{Secure Online E-Banking}
 %
@@ -597,7 +597,7 @@ We measured the time cost of certification generation at server side and TLS han
 %	\label{fig:usb}
 %\end{figure}
 %
-%State-of-the-art secure token mechanism employs a two-factor authentication, which combines a user password and a physical device (usually a USB key, e.g. Yubikey\footnote{https://www.yubico.com/products/yubikey-hardware/yubikey4/}). %that provides digital certificate to prove genuine user identity. One of the popular examples is Yubikey\footnote{https://www.yubico.com/products/yubikey-hardware/yubikey4/}. Because these USB key implementations are not open source, we built a secure E-Banking application according to their documentations. We name our USB key and secure E-Banking implementation as \textit{AuraKey} and \textit{AuraBank} respectively.
+%State-of-the-art secure token mechanism employs a two-factor authentication, which combines a user password and a physical device (usually a USB key, e.g. Yubikey\footnote{https://www.yubico.com/products/yubikey-hardware/yubikey4/}). %that provides digital certificate to prove genuine user identity. One of the popular examples is Yubikey\footnote{https://www.yubico.com/products/yubikey-hardware/yubikey4/}. Because these USB key implementations are not open source, we built a secure E-Banking application according to their documentation. We name our USB key and secure E-Banking implementation as \textit{AuraKey} and \textit{AuraBank} respectively.
 %Typically, a USB key identifies itself as a USB HID keyboard device so that any machine with a keyboard driver can easily read the textual outputs from it, therefore, we use an EHCI-based USB HID keyboard to emulate a USB key, named \textit{AuraKey}. We created an enclave program as a hardened E-Banking prototype, named \textit{AuraBank} and equipped \textit{AuraKey} with a PKCS format certificate from \textit{AuraBank}, as shown in \autoref{fig:usb}. We wrote a script to attach/detach the USB device during runtime, emulating the action of plugging/unplugging of \textit{AuraKey}. We deployed the server side of \textit{AuraBank} on a standalone machine in the local area network.
 %
 %We then illustrate how Aurora-assisted online E-Banking works. Firstly, a user launches the \textit{AuraBank} application and then performs some personal transactions. All of the confidential transaction logs are locally cached within the enclave of the \textit{AuraBank}. When the user commits her transactions to the bank server, she needs to hot-plugin the \textit{AuraKey} to confirm her operations. After being inserted into the USB slot, the \textit{AuraKey} triggers an SMI to notify SMVisor, which then intercepts all input interrupts of \textit{AuraKey} and obtains the security token. SMVisor hands the security token to \textit{AuraBank} via secure channel. Finally, \textit{AuraBank} sends transaction data and identity authentication information to the bank server via TLS protection, which then authenticates the user identity and validate her transaction. %with what the user knows (i.e. the personal identification number a.k.a PIN) and what the user has (i.e. physically secured private key).
@@ -662,13 +662,12 @@ We integrated \textsc{Aurora}'s Tlibaurora into existing SGX-SQLite projects\foo
 To protect the data, Tlibaurora's shim layer uses a symmetric key derived from user password and in-enclave nonces to encrypt the file payloads. %, and computes MAC values for blocks. 
 To avoid password leak, we use \textsc{Aurora}'s trusted input path to obtain users' passwords from keyboard devices. Moreover, \textsc{Aurora}'s secure session protects the confidentiality and integrity of data between SQLite enclaves and SMVisor.
 When SQLite invokes Tlibaurora file APIs, it opens the USB storage device in direct I/O mode and reads/writes data using 4KB block size. 
-Finally, %to directly measure the overhead introduced by \textsc{Aurora}'s infrastructure, 
-we set the synchronize flag to \texttt{FULL} to avoid the uncertainty of I/O caching.
+Finally, we set the synchronize flag to \texttt{FULL} to avoid the uncertainty of I/O caching.
 
-We evaluated the enhanced SQLite performance by running standardized TPC-H benchmark\footnote{http://www.tpc.org/tpch/} over a large database. % (around 1.3GB).
-We make minor changes to these benchmark queries in order to make them possible to be executed in SQLite. 
+We evaluated the enhanced SQLite performance by running standardized TPC-H benchmark\footnote{http://www.tpc.org/tpch/} over a large database. These queries include \textit{select from, order by, group by} benchmarks. % (around 1.3GB).
+We make minor changes to these query scripts to make them possible to be executed in SQLite. 
 %In our experiment, the native insertion transactions for 1000 times cost 17.3 seconds while the ones with \textsc{Aurora}'s trusted path cost 20.5 seconds. About 18\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
-\autoref{table:tpch} shows the completed queries\footnote{Note that several queries, i.e., \textit{select from, order by, group by}, cannot be executed due to our partial porting of the original project.} and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
+\autoref{table:tpch} shows the completed queries\footnote{Note that not all queries can be executed due to the partial porting of the original project.} and their results of native SGX-SQLite and \textsc{Aurora}-SGLite respectively. In our experiments, no more than 10.08\% overhead is introduced because of the extra encrypt/decrypt computation and mode transitions in \textsc{Aurora}.
 Note that these are the worst-case overheads (because we have set \texttt{PRAGMA synchronous} to \texttt{FULL}) as almost all databases have their own optimized caching mechanisms for better performance.
 
 %\subsection{Secure Password Manager}
@@ -677,7 +676,7 @@ Note that these are the worst-case overheads (because we have set \texttt{PRAGMA
 %However, a user still needs to type in his username and password to initialize a password entry. Without a trusted input path, the SGX-assisted password manager cannot assure to protect the user's confidentiality.
 %
 %We retrofitted KeePassX, an open source GUI password manager, to demonstrate Aurora's trusted input path. We ported the crypto process, kdbx password database and entry editing functions into an enclave program, so that the user's passwords are clear text only in the enclave. When the user adds a new entry, a GUI message box is popped up, and SMVisor is activated to intercept all keyboard inputs. %Since the GUI logic is untrusted, we do not allow the GUI to touch the real password character, rather, after the user releases a key, the enclave sends the \textit{signal} to GUI and the GUI displays an asteroid. 
-%After the user clicks the "OK" button, her username, password and other private information are then encrypted inside the enclave, and later restored into the database in encrypted format.
+%After the user clicks the "OK" button, her username, password and other private information are then encrypted inside the enclave, and later restored into the database in an encrypted format.
 
 \section{Related Work}
 Our technique was inspired by Scotch~\cite{DBLP:conf/raid/LeachZW17} which is the first work that combines SGX and SMM to audit VM resource usage. Its motivation differs from ours.
@@ -706,7 +705,7 @@ On the mobile side, TrustUI~\cite{DBLP:conf/apsys/LiMHXZCL14} exploits ARM Trust
 AuditedIO \cite{DBLP:conf/apsys/BalakrishnanCBS17} leverages SGX and a kernel module to implement verifiable data storage for disk I/O operations. It requires a programmable SSD device and modifies the firmware.
 By contrast, \textsc{Aurora} aims for a trusted-path framework which can be used to support general storage devices. % and it protects SMM supervisor inside SMRAM and use mutual authentication to ensure its authenticity.
 Jang~\cite{Jang2017Building} builds a trusted path between a USB proxy device and an enclave. The proxy device uses LED display for user verification. It plays the role of  \textsc{Aurora}'s SMVisor while \textsc{Aurora} does not need to introduce dedicated hardware. % while meeting the same or better protection requirements.
-BASTION-SGX~\cite{DBLP:conf/isca/PetersLVPK18} modifies the Bluetooth firmware and establishes trusted paths between Bluetooth  devices and enclave programs. It has similar threat model with \textsc{Aurora} and rules the privileged software (OS, drivers, etc.) out of the TCB. %However, it requires enclave programs to take charge of handling the HID input, which is a burden for developers. % and outstands BASTION-SGX by its high extensibility. It is a client/server architecture whereas Aurora reuses existing hardware features on one machine.% light-weight terminal on the end-host to,  Bumpy~\cite{DBLP:conf/ndss/McCunePR09} utilizes dedicated hardware to establish trusted user input path and hence cannot generalize to other devices. Cloud Terminal~\cite{DBLP:conf/usenix/MartignoniPZHMSPPSS12} is a micro-hypervisor-based method that provides terminals secure access to sensitive applications from an untrusted OS. 
+BASTION-SGX~\cite{DBLP:conf/isca/PetersLVPK18} modifies the Bluetooth firmware and establishes trusted paths between Bluetooth devices and enclave programs. It has a similar threat model with \textsc{Aurora} and rules the privileged software (OS, drivers, etc.) out of the TCB. %However, it requires enclave programs to take charge of handling the HID input, which is a burden for developers. % and outstands BASTION-SGX by its high extensibility. It is a client/server architecture whereas Aurora reuses existing hardware features on one machine.% light-weight terminal on the end-host to,  Bumpy~\cite{DBLP:conf/ndss/McCunePR09} utilizes dedicated hardware to establish trusted user input path and hence cannot generalize to other devices. Cloud Terminal~\cite{DBLP:conf/usenix/MartignoniPZHMSPPSS12} is a micro-hypervisor-based method that provides terminals secure access to sensitive applications from an untrusted OS. 
 Pesos~\cite{DBLP:conf/eurosys/KrahnTVKBF18} builds a trusted path between enclaves and cloud-based storage, and supports policy-based object protection. Still, Pesos requires a programmable storage HDD named Kinetic Open Storage, while \textsc{Aurora} does not.
 %SGX-FS \cite{DBLP:conf/cloudcom/BurihabwaFMS18} hardened a user-level filesystem in an enclave, which is more generic than \textsc{Aurora}.
 
@@ -716,7 +715,7 @@ We present \textsc{Aurora}, a novel architecture which provides trusted I/O path
 
 \section*{Acknowledgement}
 
-The authors would like to thank Kai Huang from Intel Corporation and Shweta Shinde from National University of Singapore for their generous help and constructive advices. The authors also thank the anonymous reviewers for their valuable comments that help improve the article.
+The authors would like to thank Kai Huang from Intel Corporation and Shweta Shinde from National University of Singapore for their generous help and constructive advice. The authors also thank the anonymous reviewers for their valuable comments that help improve the article.
 
 \bibliographystyle{IEEEtran}
 \bibliography{article}
