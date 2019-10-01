@@ -7,7 +7,6 @@ sudo \
     -bios ../seabios-usb/out/bios.bin \
     -chardev file,id=seabios,path=/tmp/bios.log \
     -device isa-debugcon,iobase=0x402,chardev=seabios \
-    -device pci-virt-dev -device edu \
     -fsdev local,security_model=passthrough,id=fsdev0,path=../ \
     -device virtio-9p-pci,id=fs0,fsdev=fsdev0,mount_tag=hostshare \
     -device usb-ehci,id=ehci                   \
