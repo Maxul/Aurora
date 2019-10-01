@@ -68,12 +68,13 @@ If you want to use Aurora for published work, please cite:
 }
 ```
 
+💬 Contact
+----------
+
+[BUPT TSIS Lab Team](hliang@bupt.edu.cn)
+
 📃 License
 ----------
 
 MIT License
 
-💬 Contact
-----------
-
-[BUPT TSIS Lab Team](hliang@bupt.edu.cn)
