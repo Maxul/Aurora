@@ -47,7 +47,7 @@ make
 -----------
 If you want to use [Aurora](https://ieeexplore.ieee.org/abstract/document/8859293/) for your published work, please cite:
 ```
-@article{Liang2020AAurora,
+@article{Liang2020Aurora,
   author  = {Hongliang {Liang} and
              Mingyu {Li} and
              Yixiu {Chen} and
