@@ -1,7 +1,7 @@
 🌈 Aurora
 ---------
 
-This is a simulation of Aurora Prototype using qemu-sgx.
+_This is a simulation of Aurora Prototype using qemu-sgx_.
 
 
 💾 Install
@@ -45,36 +45,34 @@ make
 
 📢 Citation
 -----------
-If you want to use Aurora for published work, please cite:
+If you want to use [Aurora](https://ieeexplore.ieee.org/abstract/document/8859293/) for your published work, please cite:
 ```
-@article{DBLP:journals/corr/abs-1802-03530,
-  author    = {Hongliang Liang and
-               Mingyu Li and
-               Qiong Zhang and
-               Yue Yu and
-               Lin Jiang and
-               Yixiu Chen},
-  title     = {Aurora: Providing Trusted System Services for Enclaves On an Untrusted
-               System},
-  journal   = {CoRR},
-  volume    = {abs/1802.03530},
-  year      = {2018},
-  url       = {http://arxiv.org/abs/1802.03530},
-  archivePrefix = {arXiv},
-  eprint    = {1802.03530},
-  timestamp = {Mon, 13 Aug 2018 16:47:43 +0200},
-  biburl    = {https://dblp.org/rec/bib/journals/corr/abs-1802-03530},
-  bibsource = {dblp computer science bibliography, https://dblp.org}
+@article{Liang2020AAurora,
+  author  = {Hongliang {Liang} and
+             Mingyu {Li} and
+             Yixiu {Chen} and
+             Lin {Jiang} and
+             Zhuosi {Xie} and
+             Tianqi {Yang}},
+  title   = {Establishing Trusted I/O Paths for SGX Client Systems With Aurora}, 
+  journal = {IEEE Transactions on Information Forensics and Security}, 
+  year    = {2020},
+  volume  = {15},
+  number  = {},
+  pages   = {1589-1600},
+  doi     = {10.1109/TIFS.2019.2945621},
+  ISSN    = {1556-6021},
+  month   = {},
 }
 ```
 
 💬 Contact
 ----------
 
-[BUPT TSIS Lab Team](hliang@bupt.edu.cn)
+* [Hongliang Liang](mailto:hliang@bupt.edu.cn)
+* [Mingyu Li](mailto:lmy2010lmy@gmail.com)
 
 📃 License
 ----------
 
 MIT License
-
